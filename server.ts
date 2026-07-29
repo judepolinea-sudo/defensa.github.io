@@ -203,7 +203,7 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
 // for INITIAL_ADMIN_EMAIL already exists, auto-provision it.
 // ===============================================================
 
-async function bootstrapAdmin() {
+export async function bootstrapAdmin() {
   if (systemStatus !== "READY") return;
   try {
     const initialAdminEmail = process.env.INITIAL_ADMIN_EMAIL;
@@ -290,9 +290,8 @@ async function getSupabaseUserByFirebaseUid(
 // SERVER
 // ===============================================================
 
-async function startServer() {
+export async function createApp() {
   const app = express();
-  const PORT = 3011;
 
   app.use(cors());
   app.use(express.json({ limit: "20mb" }));
@@ -2453,26 +2452,45 @@ async function startServer() {
   // ===============================================================
   // STATIC / VITE
   // ===============================================================
+  // Skipped entirely on Vercel — its own CDN/build output serves the static
+  // frontend, and a serverless function must never call app.listen(); see
+  // the Vercel entrypoint at api/[...path].ts, which imports createApp()
+  // directly without this block ever running.
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*all", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+  if (!process.env.VERCEL) {
+    if (process.env.NODE_ENV !== "production") {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), "dist");
+      app.use(express.static(distPath));
+      app.get("*all", (_req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", async () => {
-    console.log(`🚀 Defensa server running on http://localhost:${PORT}`);
-    console.log(`   Auth:     Firebase Authentication`);
-    console.log(`   Database: Supabase PostgreSQL`);
-    await bootstrapAdmin();
+  return app;
+}
+
+// ===============================================================
+// TRADITIONAL SERVER ENTRYPOINT (local dev, Render, Railway, etc.)
+// Skipped on Vercel — api/[...path].ts calls createApp() directly and lets
+// Vercel's own runtime handle the HTTP layer instead of app.listen().
+// ===============================================================
+
+if (!process.env.VERCEL) {
+  const PORT = process.env.PORT ? Number(process.env.PORT) : 3011;
+  createApp().then((app) => {
+    app.listen(PORT, "0.0.0.0", async () => {
+      console.log(`🚀 Defensa server running on http://localhost:${PORT}`);
+      console.log(`   Auth:     Firebase Authentication`);
+      console.log(`   Database: Supabase PostgreSQL`);
+      await bootstrapAdmin();
+    });
   });
 }
 
@@ -2499,5 +2517,3 @@ function projectRowToApi(row: Record<string, any>) {
     updatedAt: row.updated_at,
   };
 }
-
-startServer();
