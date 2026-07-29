@@ -20,6 +20,15 @@ dist-ssr
 # Server output
 server_out.log
 
+# One-time local admin scripts — hardcode real Firebase credentials/passwords,
+# never meant to be version-controlled (see each file's own header comment)
+create-admin.mjs
+create-admin2.mjs
+fix-admin.mjs
+
+# Old AI conversation logs — incidental, not needed to run the app
+migrated_prompt_history/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
