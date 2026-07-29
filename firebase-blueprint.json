@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the Defensa platform (Student, Faculty, or Admin).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique user ID from Firebase Auth." },
+        "fullName": { "type": "string", "description": "The user's full name." },
+        "email": { "type": "string", "format": "email", "description": "The user's email address." },
+        "role": { "type": "string", "enum": ["STUDENT", "FACULTY", "ADMIN"], "description": "The user's role in the system." },
+        "program": { "type": "string", "description": "The student's program (e.g., BSCS)." },
+        "yearLevel": { "type": "string", "description": "The student's year level." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created." },
+        "project": { "$ref": "ProjectProfile" }
+      },
+      "required": ["id", "fullName", "email", "role"]
+    },
+    "ProjectProfile": {
+      "title": "ProjectProfile",
+      "description": "The student's research project profile.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "methodology": { "type": "string" },
+        "techStack": { "type": "string" },
+        "defenseDate": { "type": "string" },
+        "adviser": { "type": "string" },
+        "description": { "type": "string" },
+        "abstractText": { "type": "string" }
+      }
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A recorded viva simulation session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The unique session ID." },
+        "userId": { "type": "string", "description": "The ID of the user who performed the session." },
+        "projectTitle": { "type": "string", "description": "The title of the project being simulated." },
+        "overallScore": { "type": "number", "description": "The score achieved in the session." },
+        "duration": { "type": "number", "description": "The duration of the session in seconds." },
+        "questionsAnswered": { "type": "number", "description": "The number of questions answered." },
+        "date": { "type": "string", "format": "date-time", "description": "When the session took place." }
+      },
+      "required": ["userId", "projectTitle", "overallScore", "duration", "questionsAnswered", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Viva simulation sessions."
+    }
+  }
+}

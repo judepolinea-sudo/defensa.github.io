@@ -1,0 +1,7 @@
+{
+  "name": "Defensa AI Viva Simulator",
+  "description": "An AI-powered oral defense simulator designed for students to prepare for their viva voce with confidence, featuring contextual question generation and performance analytics.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

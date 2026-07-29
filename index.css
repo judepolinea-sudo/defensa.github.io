@@ -1,0 +1,155 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Chart grid line color (Recharts CartesianGrid/PolarGrid stroke) — SVG
+   presentation attributes don't take Tailwind's dark: classes, so this
+   follows the system theme via a plain CSS custom property instead. */
+:root {
+  --chart-grid: #f1f5f9;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-grid: #1e293b;
+  }
+}
+
+/* Spotlight beam entrance */
+@keyframes spotlight {
+  0%   { opacity: 0; transform: translate(-72%, -62%) scale(0.5); }
+  100% { opacity: 1; transform: translate(-50%, -40%) scale(1); }
+}
+.animate-spotlight {
+  animation: spotlight 2s ease 0.75s forwards;
+}
+
+/* Spline fallback loader spinner */
+.loader {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Dynamic progress bar — width set via CSS variable from parent */
+.bar-fill {
+  width: var(--bar-w, 0%);
+}
+
+/* Readiness ring SVG stroke animation */
+.ring-animate {
+  transition: stroke-dashoffset 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Shader hero animations */
+@keyframes shader-fade-down {
+  from { opacity: 0; transform: translateY(-20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shader-fade-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-shader-fade-down {
+  animation: shader-fade-down 0.8s ease-out forwards;
+}
+.animate-shader-fade-up {
+  animation: shader-fade-up 0.8s ease-out forwards;
+  opacity: 0;
+}
+.shader-delay-200 { animation-delay: 0.2s; }
+.shader-delay-400 { animation-delay: 0.4s; }
+.shader-delay-600 { animation-delay: 0.6s; }
+.shader-delay-800 { animation-delay: 0.8s; }
+
+/* Question entrance animation — Typeform-style rise + fade */
+@keyframes question-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-question-in {
+  animation: question-in 0.3s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-question-in { animation: none; }
+}
+
+/* Sparkles / pricing section color variables */
+:root {
+  --sparkles-color: #2563eb;
+  --gradient-color: #2563eb;
+}
+
+/* Hides the native scrollbar while keeping the element scrollable —
+   used with click-and-drag scroll handlers during practice sessions. */
+.no-scrollbar {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* legacy Edge/IE */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;              /* Chrome, Safari, Chromium Edge */
+}
+
+/* Custom animated cursor + trail (components/ui/custom-cursor.tsx) */
+html.custom-cursor-active,
+html.custom-cursor-active * {
+  cursor: none !important;
+}
+
+.cursor-dot {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.95) 0%, rgba(34, 211, 238, 0.45) 60%, transparent 100%);
+  box-shadow: 0 0 12px 2px rgba(34, 211, 238, 0.6);
+  transform: translate(-100px, -100px);
+  transition: width 0.18s ease, height 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  will-change: transform;
+}
+.cursor-dot--pointer {
+  width: 34px;
+  height: 34px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.5) 0%, rgba(34, 211, 238, 0.15) 60%, transparent 100%);
+  box-shadow: 0 0 22px 4px rgba(34, 211, 238, 0.5);
+}
+.cursor-dot--grab {
+  width: 26px;
+  height: 26px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.6) 0%, rgba(16, 185, 129, 0.2) 60%, transparent 100%);
+  box-shadow: 0 0 18px 3px rgba(16, 185, 129, 0.45);
+}
+
+/* Delayed light beam — stretches from the eased/lagged anchor point to the
+   live cursor position; positioned+rotated+sized imperatively per frame in
+   custom-cursor.tsx. transform-origin stays at the lagged (tail) end so the
+   bright head is what visually reaches toward the real cursor. */
+.cursor-beam {
+  position: fixed;
+  top: -1px;
+  left: 0;
+  height: 2px;
+  width: 0;
+  border-radius: 9999px;
+  transform-origin: left center;
+  background: linear-gradient(to right, transparent, rgba(34, 211, 238, 0.85));
+  box-shadow: 0 0 8px 1px rgba(34, 211, 238, 0.55);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  will-change: transform, width;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .cursor-dot, .cursor-beam { display: none; }
+}

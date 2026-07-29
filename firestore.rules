@@ -1,0 +1,182 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Data Model
+    // ===============================================================
+    //
+    // users/{userId}
+    //   id, fullName, email, role (STUDENT|CAPSTONE_ADVISER|CAPSTONE_COORDINATOR|ADMIN)
+    //   program (BSIT|BSCpE), yearLevel, createdAt, updatedAt, createdBy, isDeleted
+    //
+    // sessions/{sessionId}
+    //   userId, projectTitle, overallScore, duration, questionsAnswered, date
+    //
+    // groups/{groupId}
+    //   id, name, adviserId, studentIds[], createdAt, updatedAt, createdBy
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+
+    function getCallerRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getCallerRole() == 'ADMIN';
+    }
+
+    function isCoordinator() {
+      return isAuthenticated() && getCallerRole() == 'CAPSTONE_COORDINATOR';
+    }
+
+    function isAdminOrCoordinator() {
+      return isAdmin() || isCoordinator();
+    }
+
+    function isValidEmail(email) {
+      return email is string
+        && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string
+        && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isValidRole(role) {
+      return role in ['STUDENT', 'CAPSTONE_ADVISER', 'CAPSTONE_COORDINATOR', 'ADMIN'];
+    }
+
+    function isCoordinatorAllowedRole(role) {
+      return role in ['STUDENT', 'CAPSTONE_ADVISER'];
+    }
+
+    function isValidDepartment(dept) {
+      return dept == null || dept in ['BSIT', 'BSCpE'];
+    }
+
+    function isValidUserData(data) {
+      return data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100
+          && data.email is string && isValidEmail(data.email)
+          && isValidRole(data.role)
+          && isValidDateString(data.createdAt);
+    }
+
+    function isValidSession(data) {
+      return data.userId is string && data.userId == request.auth.uid
+          && data.projectTitle is string && data.projectTitle.size() > 0 && data.projectTitle.size() < 255
+          && data.overallScore is number && data.overallScore >= 0 && data.overallScore <= 100
+          && data.duration is number && data.duration >= 0
+          && data.questionsAnswered is number && data.questionsAnswered >= 0
+          && isValidDateString(data.date);
+    }
+
+    // ===============================================================
+    // Users Collection
+    // ===============================================================
+    match /users/{userId} {
+      // Any authenticated user can read their own doc; admins and coordinators see all
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdminOrCoordinator());
+
+      // Admin can create any role; Coordinator can only create STUDENT or CAPSTONE_ADVISER
+      allow create: if isValidUserData(request.resource.data)
+          && (
+            (isAdmin())
+            || (isCoordinator() && isCoordinatorAllowedRole(request.resource.data.role))
+          );
+
+      // Admin can update any field; coordinator can update student/adviser fields but NOT role
+      // Owner can update their own profile but CANNOT change their own role
+      allow update: if isAuthenticated() && isValidUserData(request.resource.data)
+          && (
+            isAdmin()
+            || (isCoordinator()
+                && isCoordinatorAllowedRole(resource.data.role)
+                && request.resource.data.role == resource.data.role)
+            || (isOwner(userId)
+                && request.resource.data.role == resource.data.role)
+          );
+
+      // Only admin can hard-delete; soft-delete goes through update
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Sessions Collection
+    // ===============================================================
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdminOrCoordinator());
+      allow create: if isAuthenticated() && isValidSession(request.resource.data);
+      allow update: if isAuthenticated() && isValidSession(request.resource.data)
+                    && (isDocOwner() || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Projects Collection (group-owned, one per group)
+    // ===============================================================
+    match /projects/{projectId} {
+      // Student in the group, adviser of the group, coordinator, or admin can read
+      allow read: if isAuthenticated() && (
+        isAdminOrCoordinator()
+        || (getCallerRole() == 'STUDENT'
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId == resource.data.groupId)
+        || (getCallerRole() == 'CAPSTONE_ADVISER'
+            && exists(/databases/$(database)/documents/groups/$(resource.data.groupId))
+            && get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.adviserId == request.auth.uid)
+      );
+
+      // Only students in a group can create the group's project (backend enforces one-per-group)
+      allow create: if isAuthenticated()
+          && getCallerRole() == 'STUDENT'
+          && request.resource.data.groupId == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0;
+
+      // Student in group or adviser of group can update
+      allow update: if isAuthenticated() && (
+        (getCallerRole() == 'STUDENT'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId == resource.data.groupId)
+        || (getCallerRole() == 'CAPSTONE_ADVISER'
+            && get(/databases/$(database)/documents/groups/$(resource.data.groupId)).data.adviserId == request.auth.uid)
+      );
+
+      allow delete: if isAdminOrCoordinator();
+    }
+
+    // ===============================================================
+    // Groups Collection
+    // ===============================================================
+    match /groups/{groupId} {
+      // All authenticated users can read groups (advisers need to see their group)
+      allow read: if isAuthenticated();
+
+      // Only admin or coordinator can manage groups
+      allow create: if isAdminOrCoordinator()
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.adviserId is string
+          && request.resource.data.studentIds is list;
+
+      allow update: if isAdminOrCoordinator();
+      allow delete: if isAdminOrCoordinator();
+    }
+  }
+}
