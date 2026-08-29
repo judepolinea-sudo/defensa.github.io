@@ -1,0 +1,37 @@
+# Render Blueprint for Defensa.
+# In Render: New + -> Blueprint -> connect this repo. Render reads this file,
+# creates the service, and prompts you for each secret below (sync: false).
+services:
+  - type: web
+    name: defensa
+    runtime: node
+    plan: free
+    region: singapore          # closest region to the Philippines
+    branch: master
+    buildCommand: npm install && npm run build
+    startCommand: NODE_ENV=production npx tsx server.ts
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # --- Firebase Admin (server side only) ---
+      - key: FIREBASE_SERVICE_ACCOUNT      # the full service-account JSON, on one line
+        sync: false
+      # --- Supabase ---
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # --- First-admin bootstrap ---
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_SETUP_KEY
+        sync: false
+      # --- AI providers (at least one required; the rest are fallbacks) ---
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
