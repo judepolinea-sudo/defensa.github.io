@@ -8,7 +8,7 @@ import {
   CircleDot, Users, FileText, Zap,
 } from 'lucide-react';
 import {
-  speakText, stopSpeaking, startSTT,
+  speakText, stopSpeaking, startSTT, primeSpeechSynthesis,
   getPanelistReaction, analyzeSpeechConfidence,
   isTTSSupported, isSTTSupported, checkMicPermission,
   type STTSession,
@@ -21,7 +21,7 @@ import {
   RubricEvaluation, PanelQuestion,
   SectionCoverage, CoverageMap,
   detectDocumentSections, initCoverageMap, updateCoverage, getNextSection,
-  createChunks, getEmbeddings,
+  createChunks, getEmbeddings, resetContextualFallback,
 } from '../../services/geminiService';
 import ShaderBackground from '../../components/ui/shader-background';
 
@@ -474,6 +474,11 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
   const initializeSession = useCallback(async () => {
     if (!project) return;
+    // Runs inside the "Begin Defense" click — unlocks the speech engine now so
+    // the first question (spoken later, outside any gesture) isn't blocked by
+    // the browser's autoplay policy.
+    if (isVoiceEnabled) primeSpeechSynthesis();
+    resetContextualFallback();   // restart offline-fallback question cycling for this session
     setUiState('generating');
     const sections: string[] = config?.selectedSections?.length
       ? config.selectedSections
@@ -485,7 +490,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     setQuestionsAsked(1);
     await fetchQuestion(first, map, '', '', 0, 0);
     setUiState('active');
-  }, [project, config?.selectedSections, fetchQuestion]);
+  }, [project, config?.selectedSections, fetchQuestion, isVoiceEnabled]);
 
   const completeSession = (finalHistory: QuestionAnswer[]) => {
     if (sessionCompletedRef.current) return;
@@ -540,18 +545,25 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     if (silenceRef.current) clearTimeout(silenceRef.current); setSilencePrompt(false);
   }, []);
 
-  const speakQuestion = useCallback((question: string, role: string) => {
+  const speakQuestion = useCallback((question: string, role: string, panelistName?: string) => {
     if (isMuted || !isTTSSupported()) return;
     setIsTtsSpeaking(true);
-    speakText(question, role, { rate: speakRate, onEnd: () => { setIsTtsSpeaking(false); if (config?.mode === 'voice' && isSTTSupported()) handleStartRecording(); } });
+    speakText(question, role, {
+      rate: speakRate,
+      panelistName,
+      // Mark the question as spoken only once speech actually begins. Marking it
+      // synchronously would let StrictMode's mount/unmount/remount cancel the
+      // first utterance and then skip re-speaking it (ref already matches).
+      onStart: () => { spokenQRef.current = question; },
+      onEnd: () => { setIsTtsSpeaking(false); if (config?.mode === 'voice' && isSTTSupported()) handleStartRecording(); },
+    });
   }, [isMuted, speakRate, config?.mode, handleStartRecording]);
 
   useEffect(() => {
     if (!isVoiceEnabled || !currentQuestion || uiState !== 'active') return;
     if (currentQuestion.question === spokenQRef.current) return;
-    spokenQRef.current = currentQuestion.question;
     setIsReviewingTranscript(false); setLiveTranscript('');
-    speakQuestion(currentQuestion.question, currentQuestion.panelist?.role || '');
+    speakQuestion(currentQuestion.question, currentQuestion.panelist?.role || '', currentQuestion.panelist?.name);
     return () => stopSpeaking();
   }, [currentQuestion?.question, uiState]);
 
@@ -588,10 +600,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     }
   }, [project, currentQuestion, startTime]);
 
-  const handleSubmit = async () => {
-    if (!response.trim() || !currentQuestion || !project) return;
+  const handleSubmit = async (answerOverride?: string) => {
+    const capturedAnswer = (answerOverride ?? response).trim();
+    if (!capturedAnswer || !currentQuestion || !project) return;
+    // Keep the textarea/state in sync when the answer came from voice.
+    if (answerOverride !== undefined && answerOverride !== response) setResponse(answerOverride);
 
-    const capturedAnswer = response;
     const root = rootQuestionRef.current ?? currentQuestion;
     const currentFollowUpCount = followUpCount;
     const threadHistoryForEval = activeThreadExchanges.map(e => ({
@@ -672,11 +686,18 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       });
     }
   };
-  const handleSubmitVoice = useCallback(async () => {
-    const text = liveTranscript.trim(); if (!text) return;
-    setResponse(text); setIsReviewingTranscript(false); setSilencePrompt(false);
-    await runEvaluation(text);
-  }, [liveTranscript, runEvaluation]);
+  // Voice answers go through the exact same pipeline as typed answers
+  // (satisfaction check → follow-ups → rubric evaluation), so voice and text
+  // sessions ask the same number of questions and never end early.
+  const handleSubmitVoice = async () => {
+    const text = liveTranscript.trim();
+    if (!text) return;
+    isListeningRef.current = false;
+    sttRef.current?.stop();
+    setIsReviewingTranscript(false);
+    setSilencePrompt(false);
+    await handleSubmit(text);
+  };
 
   useEffect(() => {
     if (uiState !== 'feedback' || !currentQuestion || !project) return;
@@ -851,7 +872,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
               {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
             {currentQuestion && !isTtsSpeaking && uiState === 'active' && (
-              <button type="button" title="Replay question" onClick={() => speakQuestion(currentQuestion.question, currentQuestion.panelist?.role || '')}
+              <button type="button" title="Replay question" onClick={() => speakQuestion(currentQuestion.question, currentQuestion.panelist?.role || '', currentQuestion.panelist?.name)}
                 className="p-1 rounded hover:bg-white/10 transition-all text-slate-400 hover:text-white">
                 <Play className="w-3.5 h-3.5" />
               </button>
@@ -1520,7 +1541,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                           {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                         </button>
                       )}
-                      <button type="button" disabled={!response.trim() || !currentQuestion || isGeneratingQuestion} onClick={handleSubmit}
+                      <button type="button" disabled={!response.trim() || !currentQuestion || isGeneratingQuestion} onClick={() => handleSubmit()}
                         className="flex items-center gap-2 px-7 py-2.5 bg-blue-600 hover:bg-blue-500 hover:-translate-y-px active:translate-y-0 disabled:opacity-25 disabled:cursor-not-allowed disabled:translate-y-0 text-white font-black rounded-xl transition-all duration-150 text-xs uppercase tracking-widest shadow-md shadow-blue-950/50 hover:shadow-lg hover:shadow-blue-950/60">
                         {followUpCount > 0 ? 'Respond' : 'Submit'} <Send className="w-3.5 h-3.5" />
                       </button>
@@ -1578,15 +1599,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
               <p className="text-slate-400 text-sm mb-8">Applying rubric weights and analyzing your response…</p>
               <div className="space-y-2 text-left">
                 {[
-                  { label: 'Accuracy',     pct: '35%', color: 'bg-blue-600' },
-                  { label: 'Completeness', pct: '25%', color: 'bg-sky-500' },
-                  { label: 'Clarity',      pct: '20%', color: 'bg-blue-400' },
-                  { label: 'Confidence',   pct: '20%', color: 'bg-cyan-400' },
+                  { label: 'Accuracy',     color: 'bg-blue-600' },
+                  { label: 'Completeness', color: 'bg-sky-500' },
+                  { label: 'Clarity',      color: 'bg-blue-400' },
+                  { label: 'Confidence',   color: 'bg-cyan-400' },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-white/[0.06] border border-white/[0.10] rounded-xl backdrop-blur-sm">
                     <div className={`w-2 h-2 rounded-full ${item.color} motion-safe:animate-pulse ${['', '[animation-delay:150ms]', '[animation-delay:300ms]', '[animation-delay:450ms]'][i] ?? ''}`} />
                     <span className="text-xs font-bold text-slate-300">{item.label}</span>
-                    <span className="ml-auto text-[10px] font-black text-slate-400">{item.pct}</span>
                   </div>
                 ))}
               </div>
@@ -1675,14 +1695,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">Category Breakdown</p>
                       <div className="grid grid-cols-2 gap-5">
                         {[
-                          { label: 'Accuracy',     val: currentEval.accuracy,    weight: '35%', desc: currentEval.explanations.accuracy },
-                          { label: 'Completeness', val: currentEval.completeness, weight: '25%', desc: currentEval.explanations.completeness },
-                          { label: 'Clarity',      val: currentEval.clarity,      weight: '20%', desc: currentEval.explanations.clarity },
-                          { label: 'Confidence',   val: currentEval.confidence,   weight: '20%', desc: currentEval.explanations.confidence },
+                          { label: 'Accuracy',     val: currentEval.accuracy,    desc: currentEval.explanations.accuracy },
+                          { label: 'Completeness', val: currentEval.completeness, desc: currentEval.explanations.completeness },
+                          { label: 'Clarity',      val: currentEval.clarity,      desc: currentEval.explanations.clarity },
+                          { label: 'Confidence',   val: currentEval.confidence,   desc: currentEval.explanations.confidence },
                         ].map((cat, i) => (
                           <div key={i}>
                             <div className="flex items-center justify-between mb-1.5">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.label} <span className="text-slate-600 font-bold">({cat.weight})</span></span>
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.label}</span>
                               <span className={`text-sm font-black ${scoreColor(cat.val)}`}>{cat.val}</span>
                             </div>
                             <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden mb-2">

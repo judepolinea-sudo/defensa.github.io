@@ -122,7 +122,17 @@ const App: React.FC = () => {
         }
       } else {
         setUser(null);
-        setCurrentView(ViewState.LANDING);
+        // Don't yank the user off an auth screen when a sign-in attempt is
+        // rejected server-side (e.g. a deleted/deactivated account): the
+        // backend returns no profile, which lands here. Staying on LOGIN /
+        // REGISTER lets those views show their own error notification.
+        setCurrentView((prev) =>
+          prev === ViewState.LOGIN ||
+          prev === ViewState.REGISTER ||
+          prev === ViewState.EMAIL_VERIFIED
+            ? prev
+            : ViewState.LANDING,
+        );
       }
     });
 
@@ -134,6 +144,27 @@ const App: React.FC = () => {
     const t = await getSessionToken();
     setToken(t);
     setCurrentView(getRoleView(userData.role));
+  };
+
+  // Remove the current project (and its abstract) so the student can set up a
+  // new one. Past session history is preserved server-side.
+  const handleDeleteProject = async () => {
+    if (!project?.id) {
+      setProject(null);
+      return;
+    }
+    const freshToken = (await getSessionToken()) ?? token;
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${freshToken}` },
+    });
+    if (!res.ok && res.status !== 404) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || "Failed to remove the project. Please try again.");
+    }
+    setProject(null);
+    setLastSession(null);
+    setCurrentView(ViewState.STUDENT_DASHBOARD);
   };
 
   const handleSessionComplete = async (result: SessionResult) => {
@@ -232,6 +263,7 @@ const App: React.FC = () => {
           project={project}
           sessionHistory={sessionHistory}
           onEditProject={() => setCurrentView(ViewState.EDIT_PROJECT)}
+          onDeleteProject={handleDeleteProject}
           onUploadAbstract={() => setCurrentView(ViewState.ABSTRACT_UPLOAD)}
           onStartPractice={() => {
             if (!project?.abstractText) {

@@ -634,7 +634,6 @@ const FacultyDashboardView: React.FC<Props> = ({ user, token, mode, onLogout }) 
                         <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${p.abstractText ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300' : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'}`}>
                           {p.abstractText ? 'Abstract uploaded' : 'Awaiting abstract'}
                         </span>
-                        {p.adviserName && <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Adviser: {p.adviserName}</span>}
                       </div>
                     </motion.div>
                   ))}

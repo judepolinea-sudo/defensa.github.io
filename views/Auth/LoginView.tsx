@@ -53,6 +53,10 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
         err.code === "auth/invalid-credential"
       ) {
         setError("Invalid email or password.");
+      } else if (err.code === "ACCOUNT_DEACTIVATED") {
+        setError(
+          "This account has been deactivated. Please contact your administrator.",
+        );
       } else if (err.code === "PENDING_APPROVAL") {
         setError(
           "Your account is awaiting admin approval. Please check back later.",
@@ -82,6 +86,10 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
         err.code === "auth/cancelled-popup-request"
       ) {
         // User dismissed the popup — not an error worth surfacing.
+      } else if (err.code === "ACCOUNT_DEACTIVATED") {
+        setError(
+          "This account has been deactivated. Please contact your administrator.",
+        );
       } else {
         setError(err.message || "Google sign-in failed. Please try again.");
       }

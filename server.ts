@@ -110,7 +110,9 @@ if (integrityOk) {
 
 const VALID_ROLES = ["STUDENT", "ADMIN"] as const;
 type AppRole = (typeof VALID_ROLES)[number];
-const VALID_DEPARTMENTS = ["BSIT", "BSCpE"] as const;
+// Department / program is free text — a project (uploaded paper) can come from
+// any program, not just BSIT/BSCpE. Kept only as a soft length guard.
+const MAX_DEPARTMENT_LEN = 120;
 
 function isValidRole(role: string): role is AppRole {
   return (VALID_ROLES as readonly string[]).includes(role);
@@ -408,7 +410,8 @@ export async function createApp() {
 
       if (row.is_deleted === true) {
         return res.status(403).json({
-          message: "Account deactivated. Contact your administrator.",
+          message: "This account has been deactivated. Please contact your administrator.",
+          code: "ACCOUNT_DEACTIVATED",
         });
       }
       if (row.status === "PENDING") {
@@ -1053,6 +1056,17 @@ export async function createApp() {
   // PROJECTS (one per group)
   // ===============================================================
 
+  // If the projects table still carries the old BSIT/BSCpE department CHECK
+  // (i.e. migration 009 hasn't been applied to this database yet), a project
+  // from any other program is rejected with Postgres error 23514. Department
+  // is cosmetic — not used for question generation — so in that case we just
+  // save it with a null department instead of failing the whole upload.
+  function isDepartmentConstraintError(err: any): boolean {
+    if (!err) return false;
+    const blob = `${err.code ?? ""} ${err.message ?? ""} ${err.details ?? ""}`.toLowerCase();
+    return blob.includes("department") && (err.code === "23514" || blob.includes("check constraint"));
+  }
+
   app.get("/api/projects/my", async (req, res) => {
     try {
       const caller = await verifyAndGetCaller(req.headers.authorization);
@@ -1143,11 +1157,12 @@ export async function createApp() {
       } = req.body;
 
       if (!title?.trim()) return res.status(400).json({ message: "Project title is required." });
-      if (department && !(VALID_DEPARTMENTS as readonly string[]).includes(department)) {
-        return res.status(400).json({
-          message: `Invalid department. Must be one of: ${VALID_DEPARTMENTS.join(", ")}`,
-        });
+      if (typeof department === "string" && department.length > MAX_DEPARTMENT_LEN) {
+        return res.status(400).json({ message: "Department / program name is too long." });
       }
+      const departmentValue = typeof department === "string" && department.trim()
+        ? department.trim()
+        : null;
 
       // Resolve adviser name from group, if the student has one
       let adviserName: string | null = null;
@@ -1166,38 +1181,49 @@ export async function createApp() {
       }
 
       const now = new Date().toISOString();
-      const { data: newProject, error } = await supabase
-        .from("projects")
-        .insert({
-          group_id: groupId,
-          title: title.trim(),
-          methodology: methodology || "Quantitative",
-          department: department || null,
-          tech_stack: Array.isArray(techStack) ? techStack : [],
-          defense_date: defenseDate || null,
-          description: description || null,
-          abstract_text: abstractText || null,
-          analysis_results: analysisResults || null,
-          adviser_name: adviserName,
-          status: "active",
-          created_by: caller.decoded.uid,
-          created_at: now,
-          updated_at: now,
-        })
-        .select()
-        .single();
+      const row: Record<string, any> = {
+        group_id: groupId,
+        title: title.trim(),
+        methodology: methodology || "Quantitative",
+        department: departmentValue,
+        tech_stack: Array.isArray(techStack) ? techStack : [],
+        defense_date: defenseDate || null,
+        description: description || null,
+        abstract_text: abstractText || null,
+        analysis_results: analysisResults || null,
+        adviser_name: adviserName,
+        status: "active",
+        created_by: caller.decoded.uid,
+        created_at: now,
+        updated_at: now,
+      };
 
-      if (error) throw new Error(error.message);
+      let { data: newProject, error } = await supabase
+        .from("projects").insert(row).select().single();
+
+      if (isDepartmentConstraintError(error) && row.department != null) {
+        console.warn("[projects] DB rejected department value — retrying with null. Apply migration 009 to keep the program name.");
+        row.department = null;
+        ({ data: newProject, error } = await supabase
+          .from("projects").insert(row).select().single());
+      }
+
+      if (error || !newProject) {
+        console.error("Create project insert error:", error);
+        return res.status(500).json({ message: `Could not save project: ${error?.message ?? "unknown database error"}` });
+      }
+
+      if (abstractText) stampAbstractUpload(newProject.id);
 
       await logAudit(caller.decoded.uid, "PROJECT_CREATE", "projects", newProject.id, {
         title: title.trim(),
-        department,
+        department: row.department,
       });
 
       return res.status(201).json(projectRowToApi(newProject));
     } catch (error: any) {
       console.error("Create project error:", error);
-      res.status(500).json({ message: "Server error" });
+      res.status(500).json({ message: `Server error: ${error?.message ?? "unknown"}` });
     }
   });
 
@@ -1243,10 +1269,8 @@ export async function createApp() {
       if (title !== undefined && !title?.trim()) {
         return res.status(400).json({ message: "Project title cannot be empty." });
       }
-      if (department !== undefined && !(VALID_DEPARTMENTS as readonly string[]).includes(department)) {
-        return res.status(400).json({
-          message: `Invalid department. Must be one of: ${VALID_DEPARTMENTS.join(", ")}`,
-        });
+      if (typeof department === "string" && department.length > MAX_DEPARTMENT_LEN) {
+        return res.status(400).json({ message: "Department / program name is too long." });
       }
       if (techStack !== undefined && (!Array.isArray(techStack) || techStack.length === 0)) {
         return res.status(400).json({ message: "Select at least one technology." });
@@ -1255,24 +1279,32 @@ export async function createApp() {
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
       if (title !== undefined) updates.title = title.trim();
       if (methodology !== undefined) updates.methodology = methodology;
-      if (department !== undefined) updates.department = department;
+      if (department !== undefined) updates.department = (typeof department === "string" && department.trim()) ? department.trim() : null;
       if (techStack !== undefined) updates.tech_stack = techStack;
       if (defenseDate !== undefined) updates.defense_date = defenseDate;
       if (description !== undefined) updates.description = description;
       if (abstractText !== undefined) updates.abstract_text = abstractText;
       if (analysisResults !== undefined) updates.analysis_results = analysisResults;
 
-      const { data: updated, error } = await supabase
-        .from("projects")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw new Error(error.message);
+      let { data: updated, error } = await supabase
+        .from("projects").update(updates).eq("id", id).select().single();
+
+      if (isDepartmentConstraintError(error) && updates.department != null) {
+        console.warn("[projects] DB rejected department value on update — retrying with null. Apply migration 009 to keep the program name.");
+        updates.department = null;
+        ({ data: updated, error } = await supabase
+          .from("projects").update(updates).eq("id", id).select().single());
+      }
+
+      if (error || !updated) {
+        console.error("Update project write error:", error);
+        return res.status(500).json({ message: `Could not save project: ${error?.message ?? "unknown database error"}` });
+      }
 
       if (abstractText !== undefined) {
         // Keep own-ai in sync whenever the abstract text changes
         indexInOwnAI(abstractText, `project-${id}-abstract`).catch(() => {});
+        if (abstractText) stampAbstractUpload(id);
         await logAudit(caller.decoded.uid, "ABSTRACT_UPLOAD", "projects", id);
       } else {
         await logAudit(caller.decoded.uid, "PROJECT_UPDATE", "projects", id);
@@ -1281,6 +1313,57 @@ export async function createApp() {
       return res.json(projectRowToApi(updated));
     } catch (error: any) {
       console.error("Update project error:", error);
+      res.status(500).json({ message: `Server error: ${error?.message ?? "unknown"}` });
+    }
+  });
+
+  // DELETE /api/projects/:id — remove a project (and its abstract) so the
+  // group can start a fresh one. Past defense sessions are kept: their
+  // project_id FK is ON DELETE SET NULL, so history/analytics stay intact.
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+
+      const { id } = req.params;
+      const { data: projectRow, error: pErr } = await supabase
+        .from("projects")
+        .select("id, group_id, created_by, title")
+        .eq("id", id)
+        .single();
+      if (pErr || !projectRow) return res.status(404).json({ message: "Project not found." });
+
+      const role: AppRole = caller.profile.role as AppRole;
+
+      if (role === "STUDENT") {
+        const ownsViaGroup = !!caller.profile.groupId && caller.profile.groupId === projectRow.group_id;
+        const ownsDirectly = projectRow.created_by === caller.decoded.uid;
+        if (!ownsViaGroup && !ownsDirectly) {
+          return res.status(403).json({ message: "You can only remove your own project." });
+        }
+      } else if (role === "CAPSTONE_ADVISER") {
+        const { data: groupRow } = await supabase
+          .from("groups")
+          .select("adviser_firebase_uid")
+          .eq("id", projectRow.group_id)
+          .single();
+        if (!groupRow || groupRow.adviser_firebase_uid !== caller.decoded.uid) {
+          return res.status(403).json({ message: "You can only remove projects from your assigned group." });
+        }
+      } else if (role !== "ADMIN" && role !== "CAPSTONE_COORDINATOR") {
+        return res.status(403).json({ message: "Forbidden." });
+      }
+
+      const { error: delErr } = await supabase.from("projects").delete().eq("id", id);
+      if (delErr) throw new Error(delErr.message);
+
+      await logAudit(caller.decoded.uid, "PROJECT_DELETE", "projects", id, {
+        title: projectRow.title,
+      });
+
+      return res.json({ message: "Project removed successfully." });
+    } catch (error: any) {
+      console.error("Delete project error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });
@@ -1890,10 +1973,30 @@ export async function createApp() {
         (userRows ?? []).map((u) => [u.firebase_uid, { fullName: u.full_name, email: u.email }]),
       );
 
+      // Backfill project titles for older sessions that were saved without one
+      const projIds = [
+        ...new Set((sessions ?? []).map((s) => s.project_id).filter(Boolean)),
+      ];
+      const projMap = new Map<string, string>();
+      if (projIds.length > 0) {
+        const { data: projRows } = await supabase
+          .from("projects")
+          .select("id, title")
+          .in("id", projIds);
+        for (const p of projRows ?? []) projMap.set(p.id, p.title);
+      }
+
       const result = (sessions ?? []).map((s) => ({
         ...s,
         userName: userMap.get(s.student_firebase_uid)?.fullName ?? "Unknown",
         userEmail: userMap.get(s.student_firebase_uid)?.email ?? "",
+        // Camel-case fields the dashboard table reads directly
+        projectTitle: s.project_title ?? (s.project_id ? projMap.get(s.project_id) : null) ?? null,
+        overallScore: s.overall_score ?? 0,
+        duration: s.duration_seconds ?? 0,
+        questionsAnswered: s.questions_answered ?? 0,
+        weakestCategory: s.weakest_category ?? null,
+        date: s.started_at ?? s.ended_at ?? s.created_at,
       }));
 
       res.json(result);
@@ -2184,9 +2287,9 @@ export async function createApp() {
 
   const OWN_AI_URL = process.env.OWN_AI_URL ?? "http://127.0.0.1:8080";
 
-  async function callOwnAI(prompt: string, system?: string): Promise<string> {
+  async function callOwnAI(prompt: string, system?: string, timeoutMs = 15_000): Promise<string> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const resp = await fetch(`${OWN_AI_URL}/generate`, {
         method: "POST",
@@ -2262,7 +2365,7 @@ export async function createApp() {
     }
   });
 
-  async function callOpenRouter(prompt: string, system?: string): Promise<string> {
+  async function callOpenRouter(prompt: string, system?: string, maxTokens = 1200): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
 
@@ -2293,7 +2396,7 @@ export async function createApp() {
             messages,
             response_format: { type: "json_object" },
             temperature: 0.7,
-            max_tokens: 1200,
+            max_tokens: maxTokens,
           }),
         });
 
@@ -2314,7 +2417,7 @@ export async function createApp() {
     throw new Error("All OpenRouter models failed.");
   }
 
-  async function callGemini(prompt: string): Promise<string> {
+  async function callGemini(prompt: string, maxTokens = 1200): Promise<string> {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY not set in environment");
 
@@ -2333,7 +2436,7 @@ export async function createApp() {
         const response = await ai.models.generateContent({
           model,
           contents: prompt,
-          config: { responseMimeType: "application/json" },
+          config: { responseMimeType: "application/json", maxOutputTokens: maxTokens },
         });
         const text = response.text ?? "";
         if (text) {
@@ -2359,7 +2462,7 @@ export async function createApp() {
     throw new Error(authFailed ? "Gemini API key is invalid — falling back to Groq" : "All Gemini models failed.");
   }
 
-  async function callGroq(prompt: string, system?: string): Promise<string> {
+  async function callGroq(prompt: string, system?: string, maxTokens = 1200): Promise<string> {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
@@ -2381,7 +2484,7 @@ export async function createApp() {
             messages,
             response_format: { type: "json_object" },
             temperature: 0.7,
-            max_tokens: 1200,
+            max_tokens: maxTokens,
           }),
         });
 
@@ -2401,47 +2504,45 @@ export async function createApp() {
   app.post("/api/ai/generate", async (req, res) => {
     try {
       if (!integrityOk) return res.status(503).json({ error: "System not configured" });
-      const { prompt, system } = req.body;
+      const { prompt, system, fast, maxTokens } = req.body;
       if (!prompt) return res.status(400).json({ error: "Missing prompt" });
 
+      const cap =
+        typeof maxTokens === "number" && maxTokens > 0 ? Math.min(maxTokens, 2000) : 1200;
       const geminiPrompt = system
         ? `[SYSTEM ROLE]\n${system}\n[/SYSTEM ROLE]\n\n${prompt}`
         : prompt;
 
+      // `fast` = interactive question generation: prefer the lowest-latency
+      // providers (Groq LPU first, hosted Flash next) and only fall back to the
+      // slower local model last. Non-fast (evaluation/reports) keeps the
+      // cost-first order: free local model → OpenRouter → Gemini → Groq.
+      const runners: Record<string, () => Promise<string>> = {
+        OwnAI: () => callOwnAI(prompt, system, fast ? 9_000 : 15_000),
+        OpenRouter: () => callOpenRouter(prompt, system, cap),
+        Gemini: () => callGemini(geminiPrompt, cap),
+        Groq: () => callGroq(prompt, system, cap),
+      };
+      const order = fast
+        ? ["Groq", "Gemini", "OpenRouter", "OwnAI"]
+        : ["OwnAI", "OpenRouter", "Gemini", "Groq"];
+
       let text: string | null = null;
-
-      // 1. Try own local AI first (no API key needed, no cost)
-      try {
-        text = await callOwnAI(prompt, system);
-      } catch (ownAiErr: any) {
-        console.warn("[AI] Own AI unavailable:", ownAiErr.message, "— trying OpenRouter");
-      }
-
-      // 2. Fallback to OpenRouter
-      if (!text && process.env.OPENROUTER_API_KEY) {
+      let lastErr = "";
+      for (const name of order) {
+        if (name === "OpenRouter" && !process.env.OPENROUTER_API_KEY) continue;
+        if (name === "Groq" && !process.env.GROQ_API_KEY) continue;
+        if (name === "Gemini" && !process.env.GEMINI_API_KEY) continue;
         try {
-          text = await callOpenRouter(prompt, system);
-        } catch (openRouterErr: any) {
-          console.warn("[AI] OpenRouter failed:", openRouterErr.message, "— trying Gemini");
+          const out = await runners[name]();
+          if (out) { console.log(`[AI] ${name} responded${fast ? " (fast path)" : ""}`); text = out; break; }
+        } catch (e: any) {
+          lastErr = e?.message ?? String(e);
+          console.warn(`[AI] ${name} failed: ${lastErr}`);
         }
       }
 
-      // 3. Fallback to Gemini
-      if (!text) {
-        try {
-          text = await callGemini(geminiPrompt);
-        } catch (geminiErr: any) {
-          console.warn("[AI] Gemini failed:", geminiErr.message);
-          // 4. Fallback to Groq
-          if (process.env.GROQ_API_KEY) {
-            console.log("[AI] Falling back to Groq...");
-            text = await callGroq(prompt, system);
-          } else {
-            throw geminiErr;
-          }
-        }
-      }
-
+      if (!text) return res.status(502).json({ error: lastErr || "All AI providers failed" });
       res.json({ text });
     } catch (err: any) {
       console.error("AI generate error:", err.message);
@@ -2515,5 +2616,21 @@ function projectRowToApi(row: Record<string, any>) {
     createdBy: row.created_by ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    abstractUploadedAt: row.abstract_uploaded_at ?? null,
   };
+}
+
+// Records when the abstract/paper was uploaded. Fire-and-forget: if the
+// abstract_uploaded_at column isn't present yet (migration 010 not applied),
+// this just logs a warning and the UI falls back to created_at.
+async function stampAbstractUpload(projectId: string) {
+  try {
+    const { error } = await supabase
+      .from("projects")
+      .update({ abstract_uploaded_at: new Date().toISOString() })
+      .eq("id", projectId);
+    if (error) console.warn("[projects] abstract_uploaded_at not recorded (run migration 010):", error.message);
+  } catch (e: any) {
+    console.warn("[projects] abstract_uploaded_at update failed:", e?.message ?? e);
+  }
 }

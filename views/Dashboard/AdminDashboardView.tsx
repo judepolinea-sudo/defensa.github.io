@@ -33,6 +33,8 @@ import {
   Cpu,
   Lock,
   BookOpen,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { User, UserRole, USER_ROLE_LABELS } from "../../types";
 import {
@@ -150,6 +152,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [projectDeleteTarget, setProjectDeleteTarget] = useState<any | null>(null);
 
   const [newUser, setNewUser] = useState({
     fullName: "",
@@ -274,6 +277,28 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   };
 
   const requestDelete = (u: any) => setDeleteTarget(u);
+
+  const confirmDeleteProject = async () => {
+    if (!projectDeleteTarget) return;
+    setActionLoading("delete-project");
+    try {
+      const res = await fetch(`/api/projects/${projectDeleteTarget.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 404) {
+        throw new Error(data.message || "Failed to delete project");
+      }
+      toast.success(`"${projectDeleteTarget.title}" deleted.`);
+      setProjectDeleteTarget(null);
+      fetchProjects();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete project.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -418,6 +443,67 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
         onCancel={() => setDeleteTarget(null)}
         loading={actionLoading === "delete"}
       />
+
+      <AnimatePresence>
+        {projectDeleteTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl p-8"
+            >
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-2xl flex items-center justify-center mb-6">
+                <AlertTriangle className="w-7 h-7 text-red-600 dark:text-red-400" />
+              </div>
+              <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2 uppercase tracking-tighter">
+                Delete Project
+              </h2>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 leading-relaxed">
+                This permanently removes the project and its uploaded abstract from Supabase. Past defense
+                sessions and scores are kept. This cannot be undone.
+              </p>
+              <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-8">
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  Project
+                </span>
+                <p className="text-sm font-black text-slate-800 dark:text-slate-100 mt-1">
+                  {projectDeleteTarget.title}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setProjectDeleteTarget(null)}
+                  disabled={actionLoading === "delete-project"}
+                  className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-black rounded-2xl transition-all uppercase tracking-tight text-xs disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteProject}
+                  disabled={actionLoading === "delete-project"}
+                  className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl transition-all uppercase tracking-tight text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-200 dark:shadow-red-900/30 disabled:opacity-50"
+                >
+                  {actionLoading === "delete-project" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {actionLoading === "delete-project" ? "Deleting…" : "Delete Project"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-slate-900 text-white p-6 flex flex-col border-r border-white/5">
@@ -1049,14 +1135,16 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                               <span
                                 className={`px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase ${s.overallScore >= 80 ? "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300" : s.overallScore >= 60 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300"}`}
                               >
-                                {s.overallScore}%
+                                {s.overallScore ?? 0}%
                               </span>
                             </td>
                             <td className="px-8 py-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">
                               {s.duration ?? 0}m
                             </td>
                             <td className="px-8 py-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase">
-                              {new Date(s.date).toLocaleDateString()}
+                              {s.date && !isNaN(new Date(s.date).getTime())
+                                ? new Date(s.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+                                : "—"}
                             </td>
                           </motion.tr>
                         ))}
@@ -1123,11 +1211,10 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                       <thead>
                         <tr className="bg-slate-50 dark:bg-slate-950/50 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
                           <th className="px-8 py-5">Project Title</th>
-                          <th className="px-8 py-5">Group</th>
                           <th className="px-8 py-5">Department</th>
-                          <th className="px-8 py-5">Adviser</th>
                           <th className="px-8 py-5">Abstract</th>
-                          <th className="px-8 py-5">Defense Date</th>
+                          <th className="px-8 py-5">Uploaded</th>
+                          <th className="px-8 py-5 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1162,16 +1249,10 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                                 )}
                               </div>
                             </td>
-                            <td className="px-8 py-6 text-sm font-bold text-slate-600 dark:text-slate-400">
-                              {p.groupName || "—"}
-                            </td>
                             <td className="px-8 py-6">
                               <span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-lg text-[10px] font-black uppercase">
                                 {p.department || "—"}
                               </span>
-                            </td>
-                            <td className="px-8 py-6 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                              {p.adviserName || "—"}
                             </td>
                             <td className="px-8 py-6">
                               <span
@@ -1180,8 +1261,20 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                                 {p.abstractText ? "Uploaded" : "Pending"}
                               </span>
                             </td>
-                            <td className="px-8 py-6 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                              {p.defenseDate || "—"}
+                            <td className="px-8 py-6 text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                              {p.abstractText && (p.abstractUploadedAt || p.createdAt)
+                                ? new Date(p.abstractUploadedAt || p.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+                                : "—"}
+                            </td>
+                            <td className="px-8 py-6 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setProjectDeleteTarget(p)}
+                                disabled={actionLoading === "delete-project"}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-40"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete
+                              </button>
                             </td>
                           </motion.tr>
                         ))}

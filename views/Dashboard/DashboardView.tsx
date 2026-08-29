@@ -5,7 +5,7 @@ import {
   Home, BookOpen, BarChart3, Settings, LogOut,
   ChevronRight, Play, Info, CheckCircle, Circle,
   Target, TrendingUp, Clock, Plus, ExternalLink,
-  ShieldCheck, AlertCircle,
+  ShieldCheck, AlertCircle, Trash2, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { ProjectProfile, SessionResult } from '../../types';
 import DefenseGuideModal from '../components/DefenseGuideModal';
@@ -16,6 +16,7 @@ interface Props {
   project: ProjectProfile | null;
   sessionHistory: SessionResult[];
   onEditProject: () => void;
+  onDeleteProject: () => Promise<void>;
   onStartPractice: () => void;
   onUploadAbstract: () => void;
   onViewAnalytics: () => void;
@@ -53,12 +54,28 @@ function useAnimatedCounter(target: number, duration = 1200) {
 
 const DashboardView: React.FC<Props> = ({
   user, token, project, sessionHistory,
-  onEditProject, onStartPractice,
+  onEditProject, onDeleteProject, onStartPractice,
   onUploadAbstract, onViewAnalytics, onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'settings'>('home');
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const handleConfirmRemove = async () => {
+    setRemoving(true);
+    setRemoveError(null);
+    try {
+      await onDeleteProject();
+      setShowRemoveConfirm(false);
+    } catch (err: any) {
+      setRemoveError(err?.message || 'Could not remove the project. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
+  };
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -255,13 +272,29 @@ const DashboardView: React.FC<Props> = ({
 
                   {project && (
                     <motion.section variants={itemVariants} className="bg-white dark:bg-slate-900 rounded-[40px] p-10 border border-slate-200 dark:border-slate-800 shadow-sm">
-                      <div className="flex items-center justify-between mb-8">
+                      <div className="flex items-center justify-between mb-8 gap-3">
                         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tighter">Active Project</h2>
-                        <span className="px-4 py-1.5 bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 rounded-full text-[10px] font-black uppercase tracking-widest">In Analysis</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={onEditProject}
+                            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full text-[10px] font-black uppercase tracking-widest transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setRemoveError(null); setShowRemoveConfirm(true); }}
+                            title="Remove project"
+                            aria-label="Remove project"
+                            className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                       <div className="p-8 bg-slate-50 dark:bg-slate-950 rounded-[32px] border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-none">{project.title}</h3>
-                        <p className="text-slate-500 dark:text-slate-400 text-sm mb-6 font-bold uppercase tracking-widest">Adviser: {project.adviserName || '—'}</p>
+                        <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-4 leading-none">{project.title}</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                             <TrendingUp className="w-5 h-5 text-blue-500" />
@@ -391,11 +424,19 @@ const DashboardView: React.FC<Props> = ({
                       <span className="px-3 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-full text-[10px] font-black uppercase tracking-widest">Active</span>
                       <button type="button" title="View project details" aria-label="View project details" className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-100"><ExternalLink className="w-5 h-5" /></button>
                     </div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-none">{project.title}</h3>
-                    <p className="text-slate-400 dark:text-slate-500 text-sm font-bold uppercase tracking-widest mb-8">Adviser: {project.adviserName || '—'}</p>
-                    <div className="flex gap-4">
-                      <motion.button onClick={onStartPractice} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-tighter text-sm shadow-lg shadow-blue-100" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Practice</motion.button>
-                      <motion.button onClick={onEditProject} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-black rounded-2xl uppercase tracking-tighter text-sm transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Edit Info</motion.button>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-8 leading-none">{project.title}</h3>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-4">
+                        <motion.button onClick={onStartPractice} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-tighter text-sm shadow-lg shadow-blue-100" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Practice</motion.button>
+                        <motion.button onClick={onEditProject} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-black rounded-2xl uppercase tracking-tighter text-sm transition-colors" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Edit Info</motion.button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setRemoveError(null); setShowRemoveConfirm(true); }}
+                        className="flex items-center justify-center gap-2 py-3 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 font-black rounded-2xl uppercase tracking-tighter text-xs transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" /> Remove Project
+                      </button>
                     </div>
                   </motion.div>
                 </div>
@@ -485,6 +526,66 @@ const DashboardView: React.FC<Props> = ({
       </main>
 
       <DefenseGuideModal isOpen={showGuide} onClose={() => setShowGuide(false)} />
+
+      <AnimatePresence>
+        {showRemoveConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[32px] shadow-2xl p-8 relative"
+            >
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-500/15 rounded-2xl flex items-center justify-center mb-6">
+                <AlertTriangle className="w-7 h-7 text-red-600 dark:text-red-400" />
+              </div>
+              <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-2 uppercase tracking-tighter">
+                Remove This Project?
+              </h2>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 leading-relaxed">
+                This permanently deletes the project and its uploaded abstract for your whole group.
+                Your past practice sessions and scores are kept. You can set up a new project right after.
+              </p>
+              {project && (
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 mb-6">
+                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Project</span>
+                  <p className="text-sm font-black text-slate-800 dark:text-slate-100 mt-1">{project.title}</p>
+                </div>
+              )}
+              {removeError && (
+                <p className="text-xs text-red-500 font-semibold mb-4 flex items-start gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-px" /> {removeError}
+                </p>
+              )}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowRemoveConfirm(false)}
+                  disabled={removing}
+                  className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-black rounded-2xl transition-all uppercase tracking-tight text-xs disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRemove}
+                  disabled={removing}
+                  className="flex-1 py-3.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl transition-all uppercase tracking-tight text-xs flex items-center justify-center gap-2 shadow-lg shadow-red-200 dark:shadow-red-900/30 disabled:opacity-50"
+                >
+                  {removing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {removing ? 'Removing…' : 'Remove Project'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

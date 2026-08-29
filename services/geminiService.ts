@@ -5,73 +5,60 @@ import { PANELISTS } from "../constants";
 // VIRTUAL VIVA VOCE DEFENSE SIMULATION ENGINE — SYSTEM PROMPTS
 // ============================================================
 
-const SYSTEM_QUESTION = `You are a Senior Capstone Thesis Defense Panelist conducting a real-time adaptive oral examination.
+const SYSTEM_QUESTION = `You are a senior capstone thesis-defense panelist running a real-time adaptive oral exam. Ask ONE targeted question grounded in the document section under assessment, the student's last answer, and that section's mastery level (calibrate difficulty to it).
 
-CORE MANDATE:
-Generate ONE targeted question based on:
-1. The specific document section being assessed
-2. The student's previous answer (if any) — follow up on what was said
-3. The section's current mastery level — calibrate difficulty accordingly
+NEVER: invent details/technologies/findings not in the document; ask a generic question ("What is your methodology?"); repeat a prior question; use information from outside the document.
 
-ABSOLUTE PROHIBITIONS:
-- NEVER invent project details, technologies, or findings not in the document
-- NEVER ask generic questions (e.g. "What is your methodology?")
-- NEVER repeat a question already asked
-- NEVER reference information outside the provided document
+Adapt to the last score:
+- <50 (weak): "Your document states X, but you said Y — reconcile that."
+- 50-69 (partial): "You covered X. What about [missing aspect from the document]?"
+- >=70 (strong): challenge with an edge case, counter-argument, or deeper implication from the document.
 
-ADAPTIVE QUESTIONING RULES:
-- Weak answer (< 50): "You mentioned X, but your document states Y. Can you reconcile that?"
-- Partial answer (50–69): "You covered X. What about [missing aspect from document]?"
-- Strong answer (≥ 70): Challenge with an edge case, counter-argument, or deeper implication from the document
+Always cite the document, e.g. "Your document uses [X]. Why was it more suitable than [Y], and what in Chapter Z supports that?"
 
-ADVERSARIAL STYLE (always cite the document):
-Generic → "What methodology did you use?"
-Adversarial → "Your document states you used [X from document]. Why was this more suitable than [Y], and what evidence in Chapter Z supports that choice?"
-
-QUESTION CATEGORIES:
-Clarification | Methodology Defense | Design Justification | Literature Validation |
-Limitation Analysis | Assumption Challenge | Data Integrity | Security | Scalability | Future Improvements
+Categories: Clarification, Methodology Defense, Design Justification, Literature Validation, Limitation Analysis, Assumption Challenge, Data Integrity, Security, Scalability, Future Improvements.
 
 Return ONLY valid JSON — no markdown, no extra text.`;
 
-const SYSTEM_EVALUATOR = `You are the LLM-as-Judge Evaluation Engine of a Virtual Viva Voce (Thesis Defense) Examination Panel.
+const SYSTEM_EVALUATOR = `You are the LLM-as-judge evaluation engine of a virtual thesis-defense panel. Produce a precise, fair, academically rigorous evaluation of one defense answer; your output feeds the performance report.
 
-Your role is to produce a precise, fair, and academically rigorous evaluation of a candidate's defense response. You operate in the background — your output feeds the post-defense performance report.
+Dimensions and weights: accuracy 35% (domain knowledge — content correctness and research relevance); completeness 25% (depth and coverage); clarity 20% (organisation and academic register); confidence 20% (composure).
 
-EVALUATION DIMENSIONS (mapped to the Defensa Rubric):
-┌─────────────────────────┬──────────────────────────────────────────────┬────────┐
-│ LLM-Judge Dimension     │ Rubric Field                                 │ Weight │
-├─────────────────────────┼──────────────────────────────────────────────┼────────┤
-│ Domain Knowledge        │ accuracy (content correctness & relevance)   │  35%   │
-│ Methodological Rigor    │ accuracy (defense of research choices)       │  —     │
-│ Clarity of Argument     │ completeness (depth/coverage) + clarity      │ 25+20% │
-│ Composure               │ confidence (delivery under pressure)         │  20%   │
-└─────────────────────────┴──────────────────────────────────────────────┴────────┘
+Verdicts:
+- finalScore >= 80 AND accuracy >= 75 -> "✅ Correct"
+- finalScore 60-79 OR accuracy 50-74 -> "⚠️ Partially Correct"
+- otherwise -> "❌ Insufficient"
 
-VERDICT THRESHOLDS:
-- finalScore ≥ 80 AND accuracy ≥ 75: ✅ Correct — Strong domain knowledge demonstrated
-- finalScore 60–79 OR accuracy 50–74: ⚠️ Partially Correct — Some aspects correct, gaps identified
-- finalScore < 60 OR accuracy < 50: ❌ Insufficient — Significant improvement required
+Rules:
+- Score SUBSTANCE, not length — a short precise answer beats a long vague one.
+- Quote ACTUAL phrases from the answer in every explanation field.
+- Give partial credit, stating what was right vs. missing. Paraphrasing is never wrong.
+- Never hallucinate facts about the research — stick to the abstract provided.
+- LENIENCY: a coherent, on-topic answer showing sensible grasp scores 60-80 even if informal or missing minor detail. Reserve <50 for genuinely off-topic, incoherent, or non-engaging answers.
+- Confidence: start at 90; -12 per strong hesitation marker (uh/um/erm); -6 per weak hedge (I think/maybe/I guess/sort of/kind of/I'm not sure).
+- finalScore MUST equal accuracy*0.35 + completeness*0.25 + clarity*0.20 + confidence*0.20.
+- Return ONLY valid JSON — no markdown fences, no extra text.`;
 
-LLM-AS-JUDGE RULES:
-- Score based on SUBSTANCE, not length — a short, precise answer beats a long, vague one
-- Cite ACTUAL PHRASES from the candidate's response in every explanation field
-- Give partial credit with explicit explanation of what was correct vs. what was missing
-- NEVER penalize for correct concepts expressed in different words (paraphrasing ≠ wrong)
-- NEVER hallucinate facts about the research — stick to the abstract provided
-- LENIENCY PRINCIPLE: An answer does NOT need to be a perfect, textbook-complete response to score well. If it is coherent, on-topic, and shows a sensible grasp of the idea — even if informal, imprecise, or missing minor detail — score it in the adequate-to-good range (roughly 60-80), not as insufficient. Reserve scores below 50 for answers that are genuinely off-topic, incoherent, or fail to engage with the question at all.
-- Confidence scoring: start at 90, deduct 12 for each strong hesitation marker (uh/um/erm), deduct 6 for each weak hedge (I think/maybe/I guess/sort of/kind of/I'm not sure)
-- finalScore MUST equal: (accuracy × 0.35) + (completeness × 0.25) + (clarity × 0.20) + (confidence × 0.20)
-- Return ONLY valid JSON — no markdown fences, no explanation, no extra text`;
+interface CallAIOptions {
+  /** interactive path — server prioritises the lowest-latency providers */
+  fast?: boolean;
+  /** output token cap — smaller = faster for short JSON replies */
+  maxTokens?: number;
+  timeoutMs?: number;
+}
 
-async function callServerAI(prompt: string, system?: string): Promise<string> {
+async function callServerAI(
+  prompt: string,
+  system?: string,
+  opts: CallAIOptions = {},
+): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 55_000);
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 45_000);
   try {
     const resp = await fetch("/api/ai/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, system }),
+      body: JSON.stringify({ prompt, system, fast: opts.fast, maxTokens: opts.maxTokens }),
       signal: controller.signal,
     });
     if (!resp.ok) {
@@ -176,137 +163,155 @@ function getResearchTopic(abstract: string): string {
   return first.substring(0, 100) || abstract.substring(0, 80);
 }
 
-// --- CONTEXTUAL FALLBACK QUESTIONS (used when AI is unavailable) ---
+// A panelist's role should shape HOW they interrogate (their disposition and the
+// kind of weakness they look for), never WHICH topic they ask about — the topic
+// always comes from the document. Deliberately contains no subject nouns.
+function panelistAngleFor(role: string): string {
+  const r = (role || "").toLowerCase();
+  if (/method|research design|psychometric|assessment|statistic|epidemiolog/.test(r))
+    return "You press on rigour and evidence — why a choice was made over the alternatives, and whether the section's own claims are actually supported by what it reports.";
+  if (/advers|critic|ethic|impact|reviewer/.test(r))
+    return "You go for the single weakest point in what the section actually says — an unsupported claim, a contradiction, an assumption left unexamined.";
+  if (/practition|industry|operation|management|entrepreneur|quality/.test(r))
+    return "You test whether what the section describes would hold up in real use — feasibility, what was left out, what happens once the study ends.";
+  if (/architect|technical|engineer|systems|design|developer/.test(r))
+    return "You dig into how something was built or decided and whether that choice holds up — what was assumed, what trade-off was accepted, where it could fail.";
+  return "You examine the section critically from your area of expertise, staying strictly on what the document reports.";
+}
 
-const CONTEXTUAL_TEMPLATES: Record<
-  string,
-  ((topic: string, kw: string[]) => { question: string; category: string })[]
-> = {
+// Map an arbitrary selected section label to the closest fallback-template group.
+function phaseForSection(section: string): string {
+  const s = (section || "").toLowerCase();
+  if (/(literature|related stud|related work|rrl|framework|review of related)/.test(s)) return "Literature";
+  if (/(method|design|sdlc|architecture|erd|diagram|data gathering|sampling|instrument)/.test(s)) return SessionPhase.METHODOLOGY;
+  if (/(result|finding|testing|test case|evaluation|discussion|data analysis|uat|acceptance)/.test(s)) return SessionPhase.RESULTS;
+  if (/(conclusion|recommendation|summary)/.test(s)) return "Conclusions";
+  if (/(limitation|contribution|future|defense)/.test(s)) return SessionPhase.DEFENSE;
+  if (/(introduction|background|problem|objective|scope|significance|rationale)/.test(s)) return SessionPhase.INTRODUCTION;
+  return SessionPhase.INTRODUCTION;
+}
+
+// --- CONTEXTUAL FALLBACK QUESTIONS (used when the AI call fails) ---
+// Every template weaves in the actual selected section and, where possible, a
+// real phrase lifted from the document, so even the offline path stays about
+// THIS paper rather than sounding like a generic panel script.
+
+type TplCtx = { section: string; topic: string; kw: string[]; phrase: string };
+type Tpl = (c: TplCtx) => { question: string; category: string };
+
+const kwList = (kw: string[], n = 2) => kw.slice(0, n).join(" and ") || "your study";
+
+const PHRASE_TEMPLATES: Tpl[] = [
+  ({ section, phrase }) => ({
+    question: `In your ${section}, you write "${phrase}". Unpack that for the panel — what does it actually mean and why did you put it that way?`,
+    category: "Clarification",
+  }),
+  ({ section, phrase }) => ({
+    question: `Your ${section} states "${phrase}". What evidence in your own work backs that claim up?`,
+    category: "Data Integrity",
+  }),
+  ({ section, phrase }) => ({
+    question: `You base part of your ${section} on "${phrase}". What would change in your study if that turned out not to hold?`,
+    category: "Assumption Challenge",
+  }),
+];
+
+const CONTEXTUAL_TEMPLATES: Record<string, Tpl[]> = {
   [SessionPhase.INTRODUCTION]: [
-    (t, kw) => ({
-      question: `Your study is about "${t}". What specific gap in existing literature led you to pursue this direction?`,
-      category: "Research Gap",
-    }),
-    (t, kw) => ({
-      question: `Focusing on ${kw.slice(0, 3).join(", ")}, what are the primary objectives of your study and how do they address the identified problem?`,
-      category: "Objectives",
-    }),
-    (t, kw) => ({
-      question: `Why is research on "${t}" significant right now, and who are the primary beneficiaries of your findings?`,
-      category: "Significance",
-    }),
-    (t, kw) => ({
-      question: `Define the scope of your study. What boundaries did you set around ${kw[0] || "your topic"} and what did you deliberately exclude?`,
-      category: "Scope",
-    }),
-    (t, kw) => ({
-      question: `What existing theories or frameworks related to ${kw.slice(0, 2).join(" and ")} did you draw upon to ground your study?`,
-      category: "Theoretical Framework",
-    }),
+    ({ section }) => ({ question: `What specific gap did your ${section} identify, and how do your objectives address exactly that gap?`, category: "Research Gap" }),
+    ({ kw }) => ({ question: `Your objectives centre on ${kwList(kw, 3)}. Which one is hardest to actually achieve, and why?`, category: "Objectives" }),
+    ({ topic }) => ({ question: `Why does "${topic}" matter now, and who is the primary beneficiary you had in mind?`, category: "Significance" }),
+    ({ section, kw }) => ({ question: `What did your ${section} deliberately leave out of scope around ${kw[0] || "the topic"}, and what did excluding it cost you?`, category: "Scope" }),
+  ],
+  Literature: [
+    ({ section }) => ({ question: `Of the studies in your ${section}, which one is closest to your work, and how is yours different?`, category: "Literature Validation" }),
+    ({ kw }) => ({ question: `Where do the sources you reviewed on ${kwList(kw)} disagree with each other, and whose side did you take?`, category: "Literature Validation" }),
+    ({ section }) => ({ question: `What in your ${section} directly justifies the approach you ended up choosing?`, category: "Design Justification" }),
+    ({ section }) => ({ question: `Which claim in your ${section} is the weakest-supported, and would you still keep it?`, category: "Assumption Challenge" }),
   ],
   [SessionPhase.METHODOLOGY]: [
-    (t, kw) => ({
-      question: `What research design did you adopt for your study on "${t}" and why was it the most suitable choice?`,
-      category: "Research Design",
-    }),
-    (t, kw) => ({
-      question: `Walk me through how you collected data on ${kw.slice(0, 2).join(" and ")}. What specific instruments or tools did you use?`,
-      category: "Data Collection",
-    }),
-    (t, kw) => ({
-      question: `How did you ensure the validity and reliability of your data collection instruments for "${t}"?`,
-      category: "Validity & Reliability",
-    }),
-    (t, kw) => ({
-      question: `Describe your analytical process. What specific methods did you apply to make sense of your ${kw[0] || "data"}?`,
-      category: "Data Analysis",
-    }),
-    (t, kw) => ({
-      question: `What sampling strategy did you use for your study and why was it appropriate for researching ${kw[0] || "this population"}?`,
-      category: "Sampling",
-    }),
+    ({ section }) => ({ question: `Walk the panel through the design in your ${section} step by step — where is it most likely to have gone wrong?`, category: "Methodology Defense" }),
+    ({ kw }) => ({ question: `How exactly did you collect data on ${kwList(kw)}, and how do you know the instrument measured what you think it did?`, category: "Data Integrity" }),
+    ({ section }) => ({ question: `What alternative method could have answered your questions, and why did you reject it in your ${section}?`, category: "Methodology Defense" }),
+    ({ section }) => ({ question: `Which single decision in your ${section} would you defend hardest if a panelist attacked it?`, category: "Design Justification" }),
   ],
   [SessionPhase.RESULTS]: [
-    (t, kw) => ({
-      question: `What were the most significant findings from your study on "${t}" and what makes them noteworthy?`,
-      category: "Key Findings",
-    }),
-    (t, kw) => ({
-      question: `How do your results on ${kw.slice(0, 2).join(" and ")} compare or contrast with what prior studies found?`,
-      category: "Comparison with Literature",
-    }),
-    (t, kw) => ({
-      question: `Were any of your findings on "${t}" surprising or contrary to what you initially expected? How do you account for them?`,
-      category: "Unexpected Results",
-    }),
-    (t, kw) => ({
-      question: `What are the practical, real-world implications of your ${kw[0] || "research"} findings?`,
-      category: "Practical Implications",
-    }),
-    (t, kw) => ({
-      question: `Did your results fully address each of your research objectives? If not, which objective was partially met and why?`,
-      category: "Objectives Alignment",
-    }),
+    ({ section }) => ({ question: `What is the single most important finding in your ${section}, and what makes it more than a coincidence?`, category: "Data Integrity" }),
+    ({ kw }) => ({ question: `Did your results on ${kwList(kw)} match what your literature predicted? Where didn't they, and why?`, category: "Literature Validation" }),
+    ({ section }) => ({ question: `Which result in your ${section} surprised you, and how do you explain it?`, category: "Clarification" }),
+    ({ section }) => ({ question: `Does your ${section} fully answer every research objective? Which one is only partly answered?`, category: "Limitation Analysis" }),
   ],
   [SessionPhase.DEFENSE]: [
-    (t, kw) => ({
-      question: `What are the primary limitations of your study on "${t}" and how do they affect how broadly your findings can be applied?`,
-      category: "Limitations",
-    }),
-    (t, kw) => ({
-      question: `How does your research on ${kw.slice(0, 2).join(" and ")} advance the existing body of knowledge in this field?`,
-      category: "Contribution",
-    }),
-    (t, kw) => ({
-      question: `If you were to replicate or extend this study on "${t}", what specific changes would you make to strengthen it?`,
-      category: "Future Direction",
-    }),
-    (t, kw) => ({
-      question: `Defend your choice of methodology for studying ${kw[0] || "this topic"}. Why is it more appropriate than an alternative approach?`,
-      category: "Methodology Defense",
-    }),
-    (t, kw) => ({
-      question: `Based on your findings about ${kw[0] || "this topic"}, what concrete recommendations do you have for practitioners or future researchers?`,
-      category: "Recommendations",
-    }),
+    ({ section }) => ({ question: `What is the most serious limitation in your ${section}, and how far does it narrow what you can claim?`, category: "Limitation Analysis" }),
+    ({ kw }) => ({ question: `What does your work on ${kwList(kw)} let someone do that they couldn't before?`, category: "Future Improvements" }),
+    ({ section }) => ({ question: `If you restarted this study tomorrow, what one change to your ${section} would matter most?`, category: "Future Improvements" }),
+  ],
+  Conclusions: [
+    ({ section }) => ({ question: `Which conclusion in your ${section} goes furthest beyond what your data can actually support?`, category: "Assumption Challenge" }),
+    ({ section }) => ({ question: `Your ${section} makes recommendations — who is supposed to act on them, and can they realistically do so?`, category: "Future Improvements" }),
+    ({ section }) => ({ question: `Summarise your contribution in one sentence. Does your ${section} actually demonstrate that?`, category: "Clarification" }),
   ],
 };
 
 const usedContextualIndices: Record<string, Set<number>> = {};
+
+// Call at the start of each practice session so template cycling restarts.
+export function resetContextualFallback() {
+  for (const k of Object.keys(usedContextualIndices)) delete usedContextualIndices[k];
+}
+
+// Pull a short, substantive phrase straight from the document for grounding.
+function pickDocumentPhrase(text: string, avoid: string[] = []): string {
+  const sentences = (text || "")
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 40 && s.length <= 180 && /[a-z]{4,}/i.test(s));
+  const usedBlob = avoid.join(" ").toLowerCase();
+  const fresh = sentences.filter((s) => !usedBlob.includes(s.toLowerCase().slice(0, 30)));
+  const pool = fresh.length > 0 ? fresh : sentences;
+  if (pool.length === 0) return "";
+  const s = pool[Math.floor(Math.random() * pool.length)];
+  return s.replace(/["]/g, "").slice(0, 150);
+}
 
 function getContextualFallbackQuestion(
   phase: string,
   panelist: Panelist,
   abstract: string,
   askedQuestions: string[] = [],
+  targetSection?: string,
 ) {
   const terms = extractAbstractTerms(abstract);
   const topic = getResearchTopic(abstract);
-  const templates =
-    CONTEXTUAL_TEMPLATES[phase] ??
-    CONTEXTUAL_TEMPLATES[SessionPhase.INTRODUCTION];
+  const section = targetSection || phase;
+  const phrase = pickDocumentPhrase(abstract, askedQuestions);
 
-  if (!usedContextualIndices[phase]) usedContextualIndices[phase] = new Set();
+  const base = CONTEXTUAL_TEMPLATES[phase] ?? CONTEXTUAL_TEMPLATES[SessionPhase.INTRODUCTION];
+  // Phrase-grounded templates go first and are only usable when we found a phrase.
+  const templates = phrase ? [...PHRASE_TEMPLATES, ...base] : base;
+  const ctx: TplCtx = { section, topic, kw: terms, phrase };
 
-  // Generate all candidate questions and filter out any that closely match already-asked ones
+  const key = `${phase}:${section}`;
+  if (!usedContextualIndices[key]) usedContextualIndices[key] = new Set();
+
   const askedLower = askedQuestions.map((q) => q.toLowerCase().trim());
+  const isRepeat = (q: string) =>
+    askedLower.some((a) => a.slice(0, 60) === q.toLowerCase().trim().slice(0, 60));
+
   const allIndices = templates.map((_, i) => i);
+  const notUsed = allIndices.filter((i) => !usedContextualIndices[key].has(i));
+  const pool = notUsed.length > 0 ? notUsed : allIndices;
 
-  // Prefer unasked (by text match) + unused (by index) in that priority order
-  const notUsedByIndex = allIndices.filter((i) => !usedContextualIndices[phase].has(i));
-  const pool = notUsedByIndex.length > 0 ? notUsedByIndex : allIndices;
-
-  // Among the pool, prefer those whose generated text hasn't been asked
-  const withQuestions = pool.map((i) => ({ i, q: templates[i](topic, terms).question.toLowerCase().trim() }));
-  const fresh = withQuestions.filter(({ q }) => !askedLower.some((a) => a.slice(0, 40) === q.slice(0, 40)));
-  const candidates = fresh.length > 0 ? fresh : withQuestions;
+  const withQ = pool.map((i) => ({ i, ...templates[i](ctx) }));
+  const fresh = withQ.filter(({ question }) => !isRepeat(question));
+  const candidates = fresh.length > 0 ? fresh : withQ;
 
   const chosen = candidates[Math.floor(Math.random() * candidates.length)];
-  usedContextualIndices[phase].add(chosen.i);
-  if (usedContextualIndices[phase].size === templates.length) usedContextualIndices[phase].clear();
+  usedContextualIndices[key].add(chosen.i);
+  if (usedContextualIndices[key].size >= templates.length) usedContextualIndices[key].clear();
 
-  const { question, category } = templates[chosen.i](topic, terms);
-  return { question, category, expectedKeywords: terms, panelist };
+  return { question: chosen.question, category: chosen.category, expectedKeywords: terms, panelist };
 }
 
 // --- LOCAL EVALUATOR (used when AI is unavailable) ---
@@ -625,7 +630,7 @@ export const analyzeAbstract = async (text: string) => {
     const prompt = `Analyze this research abstract and return JSON only.
 Fields: wordCount(int), keyTopics(string[5-8 specific topics]), technicalTermsCount(int), summary(string, 2-3 sentences summarizing the research), methodologyDetails(string, the research method used).
 Abstract: ${text.substring(0, 800)}`;
-    const raw = await callServerAI(prompt);
+    const raw = await callServerAI(prompt, undefined, { fast: true, maxTokens: 500 });
     return parseAIJson(raw);
   } catch {
     const terms = extractAbstractTerms(text);
@@ -789,10 +794,10 @@ Rules:
   include substantive chapter content a panelist could actually ask questions about.
 
 Document:
-${text.substring(0, 100000)}`;
+${text.substring(0, 40000)}`;
 
   try {
-    const raw = await callServerAI(prompt);
+    const raw = await callServerAI(prompt, undefined, { fast: true, maxTokens: 1400 });
     const parsed = parseAIJson(raw);
     if (
       parsed?.chapters &&
@@ -886,6 +891,11 @@ export function initCoverageMap(sections: string[]): CoverageMap {
   return map;
 }
 
+// A selected section always gets at least this many questions before it can be
+// marked "covered", even if the first answers score well — otherwise a focused
+// single-section session could end after one good answer.
+export const MIN_QUESTIONS_PER_SECTION = 3;
+
 export function updateCoverage(
   map: CoverageMap,
   section: string,
@@ -906,9 +916,10 @@ export function updateCoverage(
       ...current,
       mastery: newMastery,
       questionCount: newCount,
-      // No hard question-count cap — a section stays open until mastery
-      // actually reaches the threshold, however many questions that takes.
-      covered: newMastery >= threshold,
+      // Covered only once mastery clears the threshold AND the section has had
+      // a fair number of questions. No upper cap — it stays open past the
+      // minimum until mastery is actually reached.
+      covered: newMastery >= threshold && newCount >= MIN_QUESTIONS_PER_SECTION,
     },
   };
 }
@@ -920,10 +931,10 @@ export function getNextSection(
   threshold: number,
 ): string | null {
   const current = map[currentSection];
-  // Stay on the current section for as long as the last score is below
-  // threshold — no question-count cap. Only a genuinely passing score (or
-  // no section data at all) moves the exam forward.
-  if (lastScore < threshold && current) {
+  // Stay on the current section while the last answer was below threshold, or
+  // until it has had its minimum number of questions. Only a passing score on a
+  // section that has met the minimum moves the exam forward.
+  if (current && (lastScore < threshold || current.questionCount < MIN_QUESTIONS_PER_SECTION)) {
     return currentSection;
   }
   // Find next uncovered section with fewest questions asked (breadth-first)
@@ -953,9 +964,19 @@ export const generateDynamicQuestion = async (
   ragChunks: RagChunk[] = [],
   askedQuestions: string[] = [],
 ): Promise<PanelQuestion> => {
-  const docChunk = (
-    ragChunks.length > 0 ? ragChunks.map((c) => c.text).join("\n") : abstract
-  ).substring(0, 4500);
+  // Pull the parts of the document that are actually about this section (plus
+  // the thread of the current answer) instead of always feeding the first N
+  // characters — otherwise, on a long paper, every question ends up drawn from
+  // the introduction.
+  let docChunk: string;
+  if (ragChunks.length > 0) {
+    const query = `${targetSection} ${lastQuestion} ${lastAnswer}`.trim() || targetSection;
+    const hits = retrieveRelevantChunksImproved(query, ragChunks, 6);
+    const picked = (hits.length > 0 ? hits : ragChunks).map((c) => c.text).join("\n");
+    docChunk = picked.substring(0, 3200);
+  } else {
+    docChunk = abstract.substring(0, 3200);
+  }
 
   const pool = panelists.length > 0 ? panelists : PANELISTS;
   const panelist = pool[questionIndex % pool.length];
@@ -973,11 +994,10 @@ export const generateDynamicQuestion = async (
           : "Easy";
 
   const coverageSummary = Object.values(coverageMap)
-    .map(
-      (s) =>
-        `${s.covered ? "✓" : "○"} ${s.section}: mastery ${s.mastery}/100 (${s.questionCount}q)`,
-    )
-    .join("\n");
+    .map((s) => `${s.section} ${s.mastery}%${s.covered ? " ✓" : ""}`)
+    .join(" · ");
+
+  const recentAsked = askedQuestions.slice(-24).map((q) => q.slice(0, 140));
 
   const hasPrevious = !!(lastQuestion && lastAnswer);
   const followUpCtx = !hasPrevious
@@ -988,94 +1008,33 @@ export const generateDynamicQuestion = async (
         ? `PARTIAL ANSWER (${lastScore}/100) — ask for the missing elements or justification.`
         : `STRONG ANSWER (${lastScore}/100) — advance to a harder aspect or challenge an assumption.`;
 
-  const PANELIST_STYLES: Record<string, string> = {
-    "Technical Architect":
-      "Analytical and detail-oriented. Ask what happens if components fail, how it scales, security vulnerabilities, design trade-offs.",
-    "Technical Expert":
-      "Analytical and detail-oriented. Ask what happens if components fail, how it scales, security vulnerabilities, design trade-offs.",
-    "Research Methodologist":
-      "Strict and evidence-driven. Ask why this methodology was chosen over alternatives, validity of instruments, statistical rigor.",
-    "Methodology Specialist":
-      "Strict and evidence-driven. Ask why this methodology was chosen over alternatives, validity of instruments, statistical rigor.",
-    "Adversarial Examiner":
-      "Highly critical. Target the biggest weakness, challenge assumptions, expose contradictions, demand evidence for every claim.",
-    "Ethics & Impact Reviewer":
-      "Highly critical. Target the biggest weakness, challenge assumptions, expose contradictions, demand evidence for every claim.",
-    "Industry Practitioner":
-      "Practical and business-minded. Ask why users would adopt this, ROI, real-world deployment challenges, sustainability.",
-  };
-  const panelistStyle = PANELIST_STYLES[panelist.role] ?? panelist.persona;
+  const panelistAngle = panelistAngleFor(panelist.role);
 
-  const prompt = `🎓 ADAPTIVE THESIS DEFENSE — DYNAMIC QUESTION ENGINE
+  const prompt = `You are ${panelist.name}, ${panelist.role} on a thesis-defense panel${panelist.specialization ? ` (${panelist.specialization})` : ""}.
+Your role sets the ANGLE you scrutinise from and your tone — it does NOT choose the topic. ${panelistAngle}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXAMINING PANELIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name: ${panelist.name}
-Role: ${panelist.role}
-Personality & Style: ${panelistStyle}
+SECTION UNDER EXAMINATION: "${targetSection}" — difficulty ${adaptiveDifficulty} (section mastery ${sectionMastery}/100, ${sectionQuestionCount} question(s) asked here so far).
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CURRENT TARGET
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Section: "${targetSection}"
-Section mastery: ${sectionMastery}/100
-Questions asked on this section so far: ${sectionQuestionCount}
-Adaptive difficulty: ${adaptiveDifficulty}
-Overall session difficulty: ${difficulty}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PREVIOUS EXCHANGE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${
-  hasPrevious
-    ? `Q: ${lastQuestion.substring(0, 300)}
-A: ${lastAnswer.substring(0, 500)}
-Score: ${lastScore}/100
-${followUpCtx}`
-    : followUpCtx
-}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECTION COVERAGE MAP (selected sections only)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${coverageSummary}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-RESEARCH DOCUMENT (sole source of truth — no hallucinations)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOCUMENT — the ONLY source of subject matter. Every question must be about a specific claim, method, result, term, number, or decision that is actually written below:
 ${docChunk}
 
-${askedQuestions.length > 0 ? `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-QUESTIONS ALREADY ASKED — DO NOT REPEAT OR PARAPHRASE ANY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${askedQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+${hasPrevious
+  ? `LAST EXCHANGE:\nQ: ${lastQuestion.substring(0, 220)}\nA: ${lastAnswer.substring(0, 360)}\nScore ${lastScore}/100 — ${followUpCtx}`
+  : followUpCtx}
 
-` : ''}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TASK
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-As ${panelist.name} (${panelist.role}), generate ONE unique question STRICTLY about "${targetSection}" that:
-✓ Is ENTIRELY different from every question listed above
-✓ Cites SPECIFIC content from the research document above — quote terms, data, or findings verbatim
-✓ Cannot be answered without reading THIS exact research document
-✓ Directly follows up on the previous answer if one exists
-✓ Reflects your panelist role and adversarial personality
-✗ NEVER ask a generic question that could apply to any research
+SECTION PROGRESS: ${coverageSummary}
+${recentAsked.length > 0 ? `\nQUESTIONS THE PANEL HAS ALREADY ASKED (you included) — choose a DIFFERENT aspect of the section, do not repeat or rephrase any of these:\n${recentAsked.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n` : ""}
+RULES:
+- The subject must come from what "${targetSection}" of the document above actually says. Put the exact phrase you are probing in source_excerpt.
+- Do NOT ask about scalability, security, sampling, ROI, market fit, ethics, statistical power, or any topic your specialty suggests UNLESS the document itself raises it.
+- Apply your angle to that document content: same facts from the paper, your kind of scrutiny.
+- Ask ONE question, specific enough that it would make no sense asked about any other paper.
 
-Return ONLY this JSON — no markdown, no extra text:
-{
-  "question": "...",
-  "source_section": "${targetSection}",
-  "source_excerpt": "exact or paraphrased excerpt from the document (max 100 chars)",
-  "difficulty": "${adaptiveDifficulty}",
-  "question_type": "Clarification|Methodology Defense|Design Justification|Literature Validation|Limitation Analysis|Assumption Challenge|Data Integrity|Security|Scalability|Future Improvements",
-  "reason": "why this question challenges the researcher (1 sentence)",
-  "panelist_name": "${panelist.name}",
-  "expectedKeywords": ["6-8 specific terms from the document relevant to ${targetSection}"]
-}`;
+Return ONLY this JSON:
+{"question":"...","source_section":"${targetSection}","source_excerpt":"exact phrase from the document, max 100 chars","difficulty":"${adaptiveDifficulty}","question_type":"Clarification|Methodology Defense|Design Justification|Literature Validation|Limitation Analysis|Assumption Challenge|Data Integrity|Security|Scalability|Future Improvements","reason":"1 sentence","panelist_name":"${panelist.name}","expectedKeywords":["6-8 terms taken from the document for ${targetSection}"]}`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_QUESTION);
+    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 700 });
     const parsed = parseAIJson(raw);
     if (!parsed.question) throw new Error("Missing question field");
     return {
@@ -1096,14 +1055,8 @@ Return ONLY this JSON — no markdown, no extra text:
       "[AI] generateDynamicQuestion failed, using contextual fallback:",
       err,
     );
-    const phase = targetSection.includes("Introduction")
-      ? SessionPhase.INTRODUCTION
-      : targetSection.includes("Method")
-        ? SessionPhase.METHODOLOGY
-        : targetSection.includes("Result")
-          ? SessionPhase.RESULTS
-          : SessionPhase.DEFENSE;
-    const fallback = getContextualFallbackQuestion(phase, panelist, abstract, askedQuestions);
+    const phase = phaseForSection(targetSection);
+    const fallback = getContextualFallbackQuestion(phase, panelist, abstract, askedQuestions, targetSection);
     return {
       question: fallback.question,
       source_section: targetSection,
@@ -1196,7 +1149,7 @@ export const generateAllQuestions = async (
 
   const documentText =
     ragChunks.length > 0 ? ragChunks.map((c) => c.text).join("\n\n") : abstract;
-  const docChunk = documentText.substring(0, 5000);
+  const docChunk = documentText.substring(0, 3500);
 
   const panelistRoster = panelists
     .map(
@@ -1254,7 +1207,7 @@ Q1 Easy | Q2 Easy | Q3 Moderate | Q4 Moderate | Q5 Hard | Q6 Hard | Q7 Expert | 
 Return ONLY the JSON array — no markdown, no extra text.`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_QUESTION);
+    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 1600 });
     const parsed = parseAIJson(raw);
 
     if (!Array.isArray(parsed) || parsed.length < 4) {
@@ -1471,7 +1424,7 @@ Return ONLY this JSON (no markdown, no extra text):
 }`;
 
   try {
-    const raw = await callServerAI(prompt);
+    const raw = await callServerAI(prompt, undefined, { fast: true, maxTokens: 1600 });
     return parseAIJson(raw) as SessionEvalReport;
   } catch {
     // Fallback: local summary
@@ -1612,7 +1565,7 @@ JUDGE OUTPUT — Return ONLY this JSON:
   }
 }`;
 
-    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR);
+    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 1100 });
     const parsed = parseAIJson(raw);
 
     // Enforce correct finalScore calculation regardless of what AI returned
@@ -1716,7 +1669,7 @@ Return ONLY valid JSON — no markdown, no explanation:
 }`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR);
+    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 650 });
     const parsed = parseAIJson(raw) as SatisfactionResult;
 
     // Enforce force-close regardless of what AI returned

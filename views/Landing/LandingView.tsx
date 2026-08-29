@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useId, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   ShieldCheck,
@@ -30,6 +30,72 @@ const NAV_LINKS = [
   { id: "how-to", label: "How To" },
   { id: "pricing", label: "Pricing" },
 ] as const;
+
+// Exact background colours of the landing sections, so a WavySeam can paint
+// each side up to the wave and blend seamlessly into the real section bg.
+const SEAM_LIGHT = "#eff6ff"; // Tailwind blue-50  (hero, workflow, FAQ)
+const SEAM_DARK = "#020617"; // Tailwind slate-950 (benefits, CTA)
+const SEAM_DARK_ALT = "#0f172a"; // Tailwind slate-900 (pricing)
+
+const SEAM_WAVE = `M0 60 q 120 -80 240 0 ${"t 240 0 ".repeat(4)}`;
+
+/**
+ * Static wavy divider that replaces a straight seam between two stacked
+ * sections. Sits centred on the boundary and paints each section's own
+ * background colour up to a shared wave edge, turning the colour change into
+ * a wave. Each fill is crisp at the wave and fades to transparent toward the
+ * SVG's outer edge, so any subpixel/overlay mismatch there blends away
+ * instead of showing as a hairline. Decorative only — no stroke, no animation.
+ *
+ * Host it inside whichever adjacent section is `relative` and NOT
+ * `overflow-hidden`; use `edge="bottom"` when hosting it in the upper section.
+ */
+const WavySeam: React.FC<{
+  topColor: string;
+  bottomColor: string;
+  edge?: "top" | "bottom";
+}> = ({ topColor, bottomColor, edge = "top" }) => {
+  const id = "seam" + useId().replace(/[^a-zA-Z0-9]/g, "");
+  return (
+    <svg
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-x-0 z-40 w-full h-28 md:h-40 ${
+        edge === "top" ? "top-0 -translate-y-1/2" : "bottom-0 translate-y-1/2"
+      }`}
+      viewBox="0 0 1200 120"
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <linearGradient
+          id={`${id}-top`}
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="120"
+        >
+          <stop offset="0" stopColor={topColor} stopOpacity="0" />
+          <stop offset="0.3" stopColor={topColor} stopOpacity="1" />
+          <stop offset="1" stopColor={topColor} stopOpacity="1" />
+        </linearGradient>
+        <linearGradient
+          id={`${id}-bottom`}
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="120"
+        >
+          <stop offset="0" stopColor={bottomColor} stopOpacity="1" />
+          <stop offset="0.7" stopColor={bottomColor} stopOpacity="1" />
+          <stop offset="1" stopColor={bottomColor} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${SEAM_WAVE} L1200 120 L0 120 Z`} fill={`url(#${id}-bottom)`} />
+      <path d={`${SEAM_WAVE} L1200 0 L0 0 Z`} fill={`url(#${id}-top)`} />
+    </svg>
+  );
+};
 
 const LandingView: React.FC<Props> = ({ onLogin }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -203,7 +269,10 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
       </section>
 
       {/* Benefits / Features Grid */}
-      <section className="py-32 px-6 border-y border-white/5 bg-slate-950 relative">
+      <section className="py-32 px-6 border-b border-white/5 bg-slate-950 relative">
+        {/* hero (light) → benefits (dark) */}
+        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK} />
+
         <div className="max-w-6xl mx-auto">
           <div className="mb-24 text-center">
             <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-6 leading-tight">
@@ -264,7 +333,12 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
       </section>
 
       {/* Workflow Section */}
-      <section id="how-to" className="py-32 px-6 bg-blue-50 scroll-mt-28">
+      <section id="how-to" className="relative py-32 px-6 bg-blue-50 scroll-mt-28">
+        {/* benefits (dark) → workflow (light) */}
+        <WavySeam topColor={SEAM_DARK} bottomColor={SEAM_LIGHT} />
+        {/* workflow (light) → pricing (dark) — hosted here since pricing is overflow-hidden */}
+        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK_ALT} edge="bottom" />
+
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-24">
             <h2 className="text-4xl md:text-7xl font-black tracking-tighter mb-4 text-slate-900">
@@ -325,7 +399,12 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
       <PricingSection />
 
       {/* FAQ Section */}
-      <section className="py-32 px-6 bg-blue-50">
+      <section className="relative py-32 px-6 bg-blue-50">
+        {/* pricing (dark) → FAQ (light) */}
+        <WavySeam topColor={SEAM_DARK_ALT} bottomColor={SEAM_LIGHT} />
+        {/* FAQ (light) → CTA (dark) — hosted here since the CTA is overflow-hidden */}
+        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK} edge="bottom" />
+
         <div className="max-w-4xl mx-auto">
           <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-16 text-center text-slate-900">
             Frequently Asked

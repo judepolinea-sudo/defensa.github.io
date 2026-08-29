@@ -202,7 +202,8 @@ export interface User {
   fullName: string;
   email: string;
   role: UserRole;
-  program?: Department;
+  // Free text — any program/department, not limited to the Department enum.
+  program?: string;
   yearLevel?: string;
   performance?: number[];
   project?: ProjectProfile;
@@ -252,7 +253,8 @@ export interface ProjectProfile {
   groupId?: string;
   title: string;
   methodology: ResearchMethodology;
-  department: Department;
+  // Free text — a project can come from any program, not just BSIT/BSCpE.
+  department?: string;
   techStack: string[];
   defenseDate?: string;
   description?: string;

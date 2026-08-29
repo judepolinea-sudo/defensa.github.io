@@ -58,9 +58,12 @@ function inferGenderFromTitle(name: string): 'male' | 'female' | 'neutral' {
   return 'neutral';
 }
 
-function selectVoice(role: string, panelistName?: string): SpeechSynthesisVoice | null {
+function selectVoiceFrom(
+  voices: SpeechSynthesisVoice[],
+  role: string,
+  panelistName?: string,
+): SpeechSynthesisVoice | null {
   const config = PANELIST_VOICE_CONFIGS[role] ?? PANELIST_VOICE_CONFIGS['Technical Architect'];
-  const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
 
   const gender = panelistName ? inferGenderFromTitle(panelistName) : 'neutral';
@@ -89,6 +92,70 @@ function selectVoice(role: string, panelistName?: string): SpeechSynthesisVoice 
   );
 }
 
+// Every speak/stop bumps this. In-flight async callbacks (voice loading, the
+// post-cancel delay, chunk chaining) check their captured value against the
+// live one and bail if superseded — this is what makes speech survive React
+// StrictMode's mount/unmount/mount double-invoke instead of being silently
+// cancelled before it ever starts.
+let speakGeneration = 0;
+let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+let activeFinish: (() => void) | null = null;
+
+function clearKeepAlive() {
+  if (keepAliveTimer) { clearInterval(keepAliveTimer); keepAliveTimer = null; }
+}
+
+/**
+ * Call once from inside a user-gesture handler (e.g. the "Begin Defense"
+ * click). Satisfies the browser autoplay/user-activation policy so the first
+ * real question is allowed to speak, and kicks off async voice-list loading.
+ */
+export function primeSpeechSynthesis(): void {
+  if (!('speechSynthesis' in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);   // silent, finishes in ~1 frame — just unlocks the engine
+    window.speechSynthesis.getVoices();
+  } catch { /* ignore */ }
+}
+
+// Chrome silently truncates any single utterance longer than ~15 seconds.
+// Splitting on sentence boundaries keeps every utterance well under that.
+function chunkForSpeech(text: string): string[] {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= 160) return clean ? [clean] : [];
+  const sentences = clean.match(/[^.!?]+[.!?]+(\s|$)|\S[^.!?]*$/g) ?? [clean];
+  const chunks: string[] = [];
+  let buf = '';
+  for (const s of sentences) {
+    const next = (buf ? buf + ' ' : '') + s.trim();
+    if (next.length > 160 && buf) { chunks.push(buf.trim()); buf = s.trim(); }
+    else { buf = next; }
+  }
+  if (buf.trim()) chunks.push(buf.trim());
+  return chunks;
+}
+
+function getVoicesReady(timeoutMs = 1500): Promise<SpeechSynthesisVoice[]> {
+  return new Promise((resolve) => {
+    const existing = window.speechSynthesis.getVoices();
+    if (existing.length) { resolve(existing); return; }
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.speechSynthesis.removeEventListener('voiceschanged', finish);
+      resolve(window.speechSynthesis.getVoices());
+    };
+    window.speechSynthesis.addEventListener('voiceschanged', finish);
+    // Fallback: on some platforms `voiceschanged` never fires — speak anyway
+    // with whatever getVoices() returns (possibly []; the OS default is used).
+    setTimeout(finish, timeoutMs);
+  });
+}
+
 export function speakText(
   text: string,
   role: string,
@@ -100,34 +167,79 @@ export function speakText(
     panelistName?: string;
   } = {},
 ): void {
-  if (!('speechSynthesis' in window)) { options.onEnd?.(); return; }
-  window.speechSynthesis.cancel();
+  if (!('speechSynthesis' in window) || !text.trim()) { options.onEnd?.(); return; }
+
+  const synth = window.speechSynthesis;
+  const myGen = ++speakGeneration;
+  synth.cancel();
+  clearKeepAlive();
 
   const config = PANELIST_VOICE_CONFIGS[role] ?? { pitch: 1, rate: 1, lang: 'en-US', preferredVoiceNames: [] };
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.pitch   = config.pitch;
-  utterance.rate    = (options.rate ?? 1.0) * config.rate;
-  utterance.volume  = options.volume ?? 1.0;
-  utterance.lang    = config.lang;
-  utterance.onstart = () => options.onStart?.();
-  utterance.onend   = () => options.onEnd?.();
-  utterance.onerror = () => options.onEnd?.();
+  const chunks = chunkForSpeech(text);
+  let idx = 0;
+  let started = false;
+  let finished = false;
 
-  const doSpeak = () => {
-    const voice = selectVoice(role, options.panelistName);
-    if (voice) utterance.voice = voice;
-    window.speechSynthesis.speak(utterance);
-  };
+  // Watchdog: guarantee onEnd fires even if the engine dies mid-utterance,
+  // so voice mode never gets stuck waiting to hand off to the microphone.
+  const watchdog = setTimeout(() => finishAll(), Math.min(90_000, 4_000 + text.length * 90));
 
-  if (window.speechSynthesis.getVoices().length > 0) {
-    doSpeak();
-  } else {
-    window.speechSynthesis.addEventListener('voiceschanged', doSpeak, { once: true });
+  function finishAll() {
+    if (finished) return;
+    finished = true;
+    clearTimeout(watchdog);
+    clearKeepAlive();
+    if (activeFinish === finishAll) activeFinish = null;
+    options.onEnd?.();
   }
+  activeFinish = finishAll;
+
+  function speakChunk(voice: SpeechSynthesisVoice | null) {
+    if (myGen !== speakGeneration) return;          // superseded by a newer call
+    if (idx >= chunks.length) { finishAll(); return; }
+    const u = new SpeechSynthesisUtterance(chunks[idx]);
+    u.pitch  = config.pitch;
+    u.rate   = (options.rate ?? 1.0) * config.rate;
+    u.volume = options.volume ?? 1.0;
+    u.lang   = config.lang;
+    if (voice) u.voice = voice;
+    u.onstart = () => { if (!started) { started = true; options.onStart?.(); } };
+    u.onend   = () => { idx += 1; speakChunk(voice); };
+    u.onerror = (e: any) => {
+      // 'interrupted'/'canceled' are the normal result of cancel() — not failures
+      if (e?.error === 'interrupted' || e?.error === 'canceled') { finishAll(); return; }
+      idx += 1; speakChunk(voice);
+    };
+    synth.speak(u);
+  }
+
+  getVoicesReady().then((voices) => {
+    if (myGen !== speakGeneration) return;
+    const voice = selectVoiceFrom(voices, role, options.panelistName);
+    // Chrome mishandles speak() invoked in the same tick as cancel() — a short
+    // delay lets the queue actually clear first.
+    setTimeout(() => {
+      if (myGen !== speakGeneration) return;
+      synth.resume();   // clears any lingering paused state from priming / a prior pause
+      speakChunk(voice);
+      clearKeepAlive();
+      keepAliveTimer = setInterval(() => {
+        if (myGen !== speakGeneration || finished) { clearKeepAlive(); return; }
+        // Resets Chrome's internal ~15s idle timer that otherwise pauses speech
+        // partway through a long panel question.
+        if (synth.speaking && !synth.paused) { synth.pause(); synth.resume(); }
+      }, 8_000);
+    }, 75);
+  });
 }
 
 export function stopSpeaking(): void {
+  const pending = activeFinish;
+  activeFinish = null;
+  speakGeneration++;
+  clearKeepAlive();
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  pending?.();   // fire the in-flight call's onEnd once so UI state unsticks
 }
 
 export function isTTSSupported(): boolean {

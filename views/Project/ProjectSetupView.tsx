@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Save, X, BookOpen, Calendar, AlignLeft } from 'lucide-react';
-import { ProjectProfile, ResearchMethodology, Department } from '../../types';
+import { ProjectProfile, ResearchMethodology } from '../../types';
 
 interface Props {
   initialData?: ProjectProfile;
@@ -13,7 +13,7 @@ const ProjectSetupView: React.FC<Props> = ({ initialData, onSave, onCancel }) =>
   const [formData, setFormData] = useState<ProjectProfile>({
     title: '',
     methodology: ResearchMethodology.QUANTITATIVE,
-    department: Department.BSIT,
+    department: '',
     techStack: [],
     defenseDate: '',
     description: '',
