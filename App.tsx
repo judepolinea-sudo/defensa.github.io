@@ -274,7 +274,6 @@ const App: React.FC = () => {
             }
             setCurrentView(ViewState.SESSION_CONFIG);
           }}
-          onViewAnalytics={() => setCurrentView(ViewState.READINESS_DASHBOARD)}
           onLogout={handleLogout}
         />
       )}

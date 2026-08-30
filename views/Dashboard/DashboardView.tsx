@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ProjectProfile, SessionResult } from '../../types';
 import DefenseGuideModal from '../components/DefenseGuideModal';
+import ReadinessDashboardView from './ReadinessDashboardView';
 
 interface Props {
   user: any;
@@ -19,7 +20,6 @@ interface Props {
   onDeleteProject: () => Promise<void>;
   onStartPractice: () => void;
   onUploadAbstract: () => void;
-  onViewAnalytics: () => void;
   onLogout: () => void;
 }
 
@@ -55,9 +55,9 @@ function useAnimatedCounter(target: number, duration = 1200) {
 const DashboardView: React.FC<Props> = ({
   user, token, project, sessionHistory,
   onEditProject, onDeleteProject, onStartPractice,
-  onUploadAbstract, onViewAnalytics, onLogout,
+  onUploadAbstract, onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'analytics' | 'settings'>('home');
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
@@ -119,6 +119,7 @@ const DashboardView: React.FC<Props> = ({
   const navItems = [
     { id: 'home' as const, icon: Home, label: 'Dashboard' },
     { id: 'projects' as const, icon: BookOpen, label: 'Projects' },
+    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics' },
     { id: 'settings' as const, icon: Settings, label: 'Settings' },
   ];
 
@@ -163,17 +164,6 @@ const DashboardView: React.FC<Props> = ({
               </span>
             </motion.button>
           ))}
-
-          <motion.button
-            initial={{ opacity: 0, y: -12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.31, duration: 0.35 }}
-            onClick={onViewAnalytics}
-            className="flex items-center gap-2 px-4 py-2.5 text-slate-400 dark:text-slate-500 hover:text-white hover:bg-white/5 rounded-xl transition-all font-bold"
-            whileHover={{ y: -2 }}
-          >
-            <BarChart3 className="w-5 h-5" /> Analytics
-          </motion.button>
         </nav>
 
         <motion.button
@@ -519,6 +509,17 @@ const DashboardView: React.FC<Props> = ({
                   </div>
                 </motion.div>
               </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'analytics' && (
+            <motion.div key="analytics" variants={pageVariants} initial="hidden" animate="visible" exit="exit">
+              <ReadinessDashboardView
+                history={sessionHistory}
+                embedded
+                onBack={() => setActiveTab('home')}
+                onNewSession={onStartPractice}
+              />
             </motion.div>
           )}
 

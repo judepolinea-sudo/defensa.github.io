@@ -17,6 +17,8 @@ interface Props {
   history: SessionResult[];
   onBack: () => void;
   onNewSession: () => void;
+  /** When rendered inside another view that already provides the nav/chrome. */
+  embedded?: boolean;
 }
 
 const CAT_KEYS = ['Accuracy', 'Completeness', 'Clarity', 'Confidence'] as const;
@@ -49,7 +51,7 @@ function useAnimatedCounter(target: number, duration = 1200) {
   return count;
 }
 
-const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession }) => {
+const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession, embedded = false }) => {
   const [selectedSession, setSelectedSession] = useState<SessionResult | null>(null);
   const [ringAnimated, setRingAnimated] = useState(false);
 
@@ -99,7 +101,7 @@ const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-10">
+    <div className={embedded ? "w-full" : "min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-10"}>
       <div className="max-w-6xl mx-auto w-full">
         <motion.div
           variants={pageVariants}
@@ -108,13 +110,15 @@ const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession
         >
           <motion.header variants={itemVariants} className="mb-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <motion.button
-                onClick={onBack}
-                className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors mb-4 font-bold"
-                whileHover={{ x: -4 }}
-              >
-                <ChevronLeft className="w-5 h-5" /> Back to Dashboard
-              </motion.button>
+              {!embedded && (
+                <motion.button
+                  onClick={onBack}
+                  className="flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors mb-4 font-bold"
+                  whileHover={{ x: -4 }}
+                >
+                  <ChevronLeft className="w-5 h-5" /> Back to Dashboard
+                </motion.button>
+              )}
               <h1 className="text-4xl font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter leading-none mb-2">Defense Readiness</h1>
               <p className="text-slate-500 dark:text-slate-400 font-medium">Aggregated analysis of your simulation history.</p>
             </div>
