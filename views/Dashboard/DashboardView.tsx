@@ -66,25 +66,48 @@ const DashboardView: React.FC<Props> = ({
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   const handleExportData = () => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      profile: {
-        fullName: user?.fullName ?? null,
-        email: user?.email ?? null,
-        program: user?.program ?? null,
-        yearLevel: user?.yearLevel ?? null,
-        role: user?.role ?? null,
-      },
-      project: project ?? null,
-      sessions: sessionHistory,
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
+    const headers = [
+      'Session Date', 'Project', 'Session Overall Score', 'Question No',
+      'Panelist', 'Category', 'Question', 'Answer', 'Question Score',
+      'Semantic Relevance', 'Keyword Accuracy', 'Clarity', 'Confidence',
+      'Strengths', 'Improvements',
+    ];
+    const rows: (string | number)[][] = [];
+    (sessionHistory ?? []).forEach((s) => {
+      const date = s.date ? new Date(s.date).toLocaleString() : '';
+      (s.history ?? []).forEach((qa, i) => {
+        const f = (qa.feedback ?? {}) as any;
+        rows.push([
+          date,
+          s.projectTitle ?? project?.title ?? '',
+          s.overallScore ?? '',
+          i + 1,
+          qa.panelistName ?? '',
+          qa.category ?? '',
+          qa.question ?? '',
+          qa.answer ?? '',
+          f.score ?? '',
+          f.semanticRelevance ?? '',
+          f.keywordAccuracy ?? '',
+          f.clarity ?? '',
+          f.confidenceLevel ?? '',
+          (f.strengths ?? []).join('; '),
+          (f.improvements ?? []).join('; '),
+        ]);
+      });
     });
+    const csv =
+      '﻿' +
+      [headers, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `defensa-data-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `defensa-data-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -529,7 +552,7 @@ const DashboardView: React.FC<Props> = ({
                     </div>
                     <div className="p-6 bg-slate-50 dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800">
                       <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Export My Data</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">Download a copy of your profile, project, and every practice session as a single JSON file.</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">Download every practice session, question, answer, and score as a CSV file you can open in Excel.</p>
                       <motion.button
                         type="button"
                         onClick={handleExportData}
@@ -537,7 +560,7 @@ const DashboardView: React.FC<Props> = ({
                         whileHover={{ x: 4 }}
                         whileTap={{ scale: 0.99 }}
                       >
-                        Download data file <Download className="w-5 h-5" />
+                        Download CSV file <Download className="w-5 h-5" />
                       </motion.button>
                     </div>
                   </div>
