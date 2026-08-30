@@ -406,7 +406,17 @@ export async function createApp() {
         .eq("firebase_uid", decoded.uid)
         .single();
 
-      if (!row) return res.status(401).json({ message: "Unauthorized" });
+      if (!row) {
+        // No Supabase profile yet. For a Google sign-in this is a first login:
+        // verifyAndGetCaller auto-provisions a STUDENT account (and is race-safe
+        // against the parallel onAuthStateChanged call). Email/password accounts
+        // still require an admin to create them first.
+        if (decoded.firebase?.sign_in_provider === "google.com") {
+          const caller = await verifyAndGetCaller(authHeader);
+          if (caller) return res.json({ user: caller.profile });
+        }
+        return res.status(401).json({ message: "Unauthorized" });
+      }
 
       if (row.is_deleted === true) {
         return res.status(403).json({
