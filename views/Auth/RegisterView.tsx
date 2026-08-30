@@ -155,8 +155,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     e.preventDefault();
     setError(null);
 
-    if (!email.trim().toLowerCase().endsWith("@nuclark.edu.ph")) {
-      setError("Only @nuclark.edu.ph email accounts can sign up.");
+    if (!email.trim().toLowerCase().endsWith("@nu-clark.edu.ph")) {
+      setError("Only @nu-clark.edu.ph email accounts can sign up.");
       return;
     }
     if (password.length < 6) {
@@ -316,13 +316,13 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   required
                   autoComplete="email"
                   className={fieldClass("pl-10 pr-4")}
-                  placeholder="juan.delacruz@nuclark.edu.ph"
+                  placeholder="juan.delacruz@nu-clark.edu.ph"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Use your @nuclark.edu.ph school email.
+                Use your @nu-clark.edu.ph school email.
               </p>
             </div>
 
