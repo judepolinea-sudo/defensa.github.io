@@ -10,9 +10,9 @@ import { cn } from '@/lib/utils'
 const PLANS = [
   {
     name: 'Student',
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    description: 'Perfect for individual thesis defense preparation.',
+    monthlyPrice: 99,
+    yearlyPrice: 990, // 12 months billed as 10 (2 months free)
+    description: 'For NU Clark students preparing for a thesis or capstone defense.',
     features: [
       'AI-powered mock defense sessions',
       'Real-time feedback on answers',
@@ -21,23 +21,23 @@ const PLANS = [
       'Performance analytics',
       'Up to 10 sessions/month',
     ],
-    cta: 'Get Started Free',
+    cta: 'Get Started',
     highlighted: false,
   },
   {
-    name: 'Faculty',
-    monthlyPrice: 0,
-    yearlyPrice: 0,
-    description: 'For advisers and coordinators managing student defenses.',
+    name: 'Premium',
+    monthlyPrice: 299,
+    yearlyPrice: 2990, // 12 months billed as 10 (2 months free)
+    description: 'Unlimited practice with the full readiness dashboard and priority support.',
     features: [
       'Everything in Student',
-      'Group & student management',
-      'Adviser assignment controls',
-      'Analytics across all students',
-      'Provision student accounts',
+      'Unlimited practice sessions',
+      'Full readiness dashboard & score trends',
+      'Adversarial hard-mode panelists',
+      'Export performance reports (PDF)',
       'Priority support',
     ],
-    cta: 'Request Access',
+    cta: 'Go Premium',
     highlighted: true,
   },
 ]
@@ -94,7 +94,7 @@ export default function PricingSection() {
             </VerticalCutReveal>
           </h2>
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
-            Free for everyone. No credit card required.
+            Simple monthly or yearly pricing. Cancel anytime.
           </p>
         </TimelineContent>
 
@@ -121,7 +121,7 @@ export default function PricingSection() {
                 {cycle}
                 {cycle === 'yearly' && (
                   <span className="ml-1.5 text-xs bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">
-                    Free
+                    2 months free
                   </span>
                 )}
               </button>
@@ -151,7 +151,7 @@ export default function PricingSection() {
                 )}
                 {plan.highlighted && (
                   <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full tracking-wider uppercase">
-                    Faculty
+                    Most Popular
                   </span>
                 )}
 
@@ -165,7 +165,12 @@ export default function PricingSection() {
                     <span className="text-5xl font-black text-white">
                       <NumberFlow
                         value={billing === 'yearly' ? plan.yearlyPrice : plan.monthlyPrice}
-                        format={{ style: 'currency', currency: 'USD', maximumFractionDigits: 0 }}
+                        format={{
+                          style: 'currency',
+                          currency: 'PHP',
+                          currencyDisplay: 'narrowSymbol',
+                          maximumFractionDigits: 0,
+                        }}
                       />
                     </span>
                     <span className="text-slate-400 mb-2 text-sm">
@@ -220,7 +225,7 @@ export default function PricingSection() {
         >
           <p className="text-slate-500 text-sm">
             This platform is part of the NU Clark capstone thesis project.{' '}
-            <span className="text-slate-400">All features are provided free of charge.</span>
+            <span className="text-slate-400">Yearly plans are billed as 10 months.</span>
           </p>
         </TimelineContent>
       </div>
