@@ -155,6 +155,10 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     e.preventDefault();
     setError(null);
 
+    if (!email.trim().toLowerCase().endsWith("@students.nu-clark.edu.ph")) {
+      setError("Only @students.nu-clark.edu.ph email accounts can sign up.");
+      return;
+    }
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
@@ -312,11 +316,14 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   required
                   autoComplete="email"
                   className={fieldClass("pl-10 pr-4")}
-                  placeholder="juan.delacruz@nu-clark.edu.ph"
+                  placeholder="juan.delacruz@students.nu-clark.edu.ph"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Use your @students.nu-clark.edu.ph school email.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

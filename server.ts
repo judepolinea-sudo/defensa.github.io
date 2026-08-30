@@ -119,6 +119,26 @@ function isValidRole(role: string): role is AppRole {
 }
 
 // ===============================================================
+// SIGN-UP EMAIL DOMAIN ALLOW-LIST
+// Only these domains may self-register (email/password) or self-provision
+// via Google sign-in. Admin-created accounts (/api/users/create) and the
+// bootstrap admin are exempt.
+// ===============================================================
+
+const ALLOWED_SIGNUP_DOMAINS = ["students.nu-clark.edu.ph"];
+
+function isAllowedSignupEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  const at = email.lastIndexOf("@");
+  if (at === -1) return false;
+  const domain = email.slice(at + 1).toLowerCase().trim();
+  return ALLOWED_SIGNUP_DOMAINS.includes(domain);
+}
+
+const SIGNUP_DOMAIN_MESSAGE =
+  "Only @students.nu-clark.edu.ph email accounts can sign up.";
+
+// ===============================================================
 // AUTH MIDDLEWARE HELPER
 // Verifies Firebase ID token → extracts Firebase UID →
 // looks up Supabase user row → returns merged caller object.
@@ -155,6 +175,9 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   // a separate, self-service path: any Google account gets an account
   // auto-provisioned as STUDENT on first login.
   if (decoded.firebase?.sign_in_provider !== "google.com") return null;
+
+  // Google self-provisioning is limited to the allowed student email domain.
+  if (!isAllowedSignupEmail(decoded.email)) return null;
 
   const { data: created, error: createErr } = await supabase
     .from("users")
@@ -412,6 +435,12 @@ export async function createApp() {
         // against the parallel onAuthStateChanged call). Email/password accounts
         // still require an admin to create them first.
         if (decoded.firebase?.sign_in_provider === "google.com") {
+          if (!isAllowedSignupEmail(decoded.email)) {
+            return res.status(403).json({
+              message: SIGNUP_DOMAIN_MESSAGE,
+              code: "EMAIL_DOMAIN_NOT_ALLOWED",
+            });
+          }
           const caller = await verifyAndGetCaller(authHeader);
           if (caller) return res.json({ user: caller.profile });
         }
@@ -459,6 +488,9 @@ export async function createApp() {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName",
         });
+      }
+      if (!isAllowedSignupEmail(email)) {
+        return res.status(400).json({ message: SIGNUP_DOMAIN_MESSAGE });
       }
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
