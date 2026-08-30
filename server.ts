@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import crypto from "crypto";
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
@@ -137,6 +138,34 @@ function isAllowedSignupEmail(email: string | undefined | null): boolean {
 
 const SIGNUP_DOMAIN_MESSAGE =
   "Only @students.nu-clark.edu.ph email accounts can sign up.";
+
+// ===============================================================
+// REGISTRATION REQUEST PASSWORD ENCRYPTION
+// A self-registration is held in registration_requests until an admin
+// approves it. The password is stored encrypted (AES-256-GCM) so the real
+// Firebase account can be created on approval without keeping it in the
+// clear. The key is derived from ADMIN_SETUP_KEY (already a required secret).
+// ===============================================================
+
+function regEncKey(): Buffer {
+  const secret = process.env.ADMIN_SETUP_KEY || "defensa-registration-fallback-key";
+  return crypto.scryptSync(secret, "defensa-registration-salt", 32);
+}
+
+function encryptRegPassword(plain: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", regEncKey(), iv);
+  const ct = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [iv.toString("base64"), tag.toString("base64"), ct.toString("base64")].join(":");
+}
+
+function decryptRegPassword(enc: string): string {
+  const [ivB, tagB, ctB] = enc.split(":");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", regEncKey(), Buffer.from(ivB, "base64"));
+  decipher.setAuthTag(Buffer.from(tagB, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(ctB, "base64")), decipher.final()]).toString("utf8");
+}
 
 // ===============================================================
 // AUTH MIDDLEWARE HELPER
@@ -474,11 +503,11 @@ export async function createApp() {
 
   // ===============================================================
   // PUBLIC SELF-REGISTRATION
-  // Unauthenticated — this is the entry point for a brand-new account.
-  // Creates the Firebase Auth user and a Supabase profile immediately, but
-  // with status PENDING. verifyAndGetCaller (and /api/auth/me above) both
-  // treat PENDING the same as "no access yet" until an admin approves it
-  // via /api/users/:uid/approve below.
+  // Unauthenticated. This does NOT create a Firebase Auth user or a `users`
+  // row. It stores the request in registration_requests (password encrypted)
+  // until an admin approves it via /api/registration-requests/:id/approve.
+  // If the admin rejects it, the request row is deleted and nothing else
+  // was ever created.
   // ===============================================================
 
   app.post("/api/auth/register", async (req, res) => {
@@ -489,55 +518,56 @@ export async function createApp() {
           message: "Missing required fields: email, password, fullName",
         });
       }
-      if (!isAllowedSignupEmail(email)) {
+      const normEmail = String(email).trim().toLowerCase();
+      if (!isAllowedSignupEmail(normEmail)) {
         return res.status(400).json({ message: SIGNUP_DOMAIN_MESSAGE });
       }
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
       }
 
-      let userRecord;
+      // Already a real account?
+      const { data: existingUser } = await supabase
+        .from("users").select("id").eq("email", normEmail).maybeSingle();
+      if (existingUser) {
+        return res.status(409).json({ message: "An account with this email already exists." });
+      }
       try {
-        userRecord = await auth.createUser({
-          email,
-          password,
-          displayName: fullName,
-          emailVerified: false,
-        });
-      } catch (createErr: any) {
-        if (createErr.code === "auth/email-already-exists") {
-          return res.status(409).json({ message: "An account with this email already exists." });
-        }
-        if (createErr.code === "auth/invalid-password") {
-          return res.status(400).json({ message: "Password must be at least 6 characters." });
-        }
-        throw createErr;
+        await auth.getUserByEmail(normEmail);
+        return res.status(409).json({ message: "An account with this email already exists." });
+      } catch (e: any) {
+        if (e.code !== "auth/user-not-found") throw e;
       }
 
-      const row = profileToRow({
-        firebaseUid: userRecord.uid,
-        email,
-        fullName,
-        role: "STUDENT",
-        program: program || null,
-        yearLevel: yearLevel || null,
-        isDeleted: false,
-        status: "PENDING",
-        createdBy: "SELF_REGISTRATION",
-      });
+      // Already a pending request?
+      const { data: existingReq } = await supabase
+        .from("registration_requests").select("id").eq("email", normEmail).maybeSingle();
+      if (existingReq) {
+        return res.status(409).json({
+          message: "A request for this email is already awaiting review.",
+        });
+      }
 
-      const { error } = await supabase.from("users").insert(row);
+      const { error } = await supabase.from("registration_requests").insert({
+        email: normEmail,
+        full_name: fullName,
+        program: program || null,
+        year_level: yearLevel || null,
+        enc_password: encryptRegPassword(password),
+      });
       if (error) {
-        // Roll back the Firebase user so a DB failure doesn't leave an
-        // orphaned auth account with no matching profile.
-        await auth.deleteUser(userRecord.uid).catch(() => {});
+        if ((error as any).code === "23505") {
+          return res.status(409).json({
+            message: "A request for this email is already awaiting review.",
+          });
+        }
         throw new Error(error.message);
       }
 
-      await logAudit(userRecord.uid, "SELF_REGISTRATION", "users", userRecord.uid, { email });
+      await logAudit(null, "REGISTRATION_REQUEST", "registration_requests", normEmail, { email: normEmail });
 
       res.status(201).json({
-        message: "Registration submitted. An administrator will review your account.",
+        message: "Registration submitted. You can sign in once an administrator approves your request.",
       });
     } catch (error: any) {
       console.error("Register error:", error);
@@ -745,8 +775,10 @@ export async function createApp() {
     }
   });
 
-  // Reject a pending self-registration (Admin only) — soft, like delete;
-  // keeps the row (audit trail) but permanently blocks login.
+  // Reject a LEGACY pending user row (Admin only). New registrations never
+  // create a users row (see /api/registration-requests below); this handles
+  // any PENDING rows created by the old flow. Rejecting fully removes the
+  // Firebase account and the users row so no trace is left.
   app.patch("/api/users/:uid/reject", async (req, res) => {
     try {
       const caller = await verifyAndGetCaller(req.headers.authorization);
@@ -762,16 +794,145 @@ export async function createApp() {
         return res.status(400).json({ message: "This account is not pending approval." });
       }
 
-      const { error } = await supabase
-        .from("users")
-        .update({ status: "REJECTED", updated_at: new Date().toISOString() })
-        .eq("firebase_uid", uid);
+      await auth.deleteUser(uid).catch(() => {});
+      const { error } = await supabase.from("users").delete().eq("firebase_uid", uid);
       if (error) throw new Error(error.message);
 
-      await logAudit(caller.decoded.uid, "USER_REJECT", "users", uid);
-      res.json({ message: "Registration rejected." });
+      await logAudit(caller.decoded.uid, "USER_REJECT", "users", uid, { email: target.email });
+      res.json({ message: "Registration rejected and removed." });
     } catch (error) {
       console.error("Reject user error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // ===============================================================
+  // REGISTRATION REQUESTS (Admin only)
+  // The new self-registration flow. A request lives in registration_requests
+  // with nothing in Firebase or the users table until it is approved.
+  // ===============================================================
+
+  app.get("/api/registration-requests", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { data, error } = await supabase
+        .from("registration_requests")
+        .select("id, email, full_name, program, year_level, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+
+      res.json(
+        (data ?? []).map((r) => ({
+          id: r.id,
+          email: r.email,
+          fullName: r.full_name,
+          program: r.program,
+          yearLevel: r.year_level,
+          createdAt: r.created_at,
+        })),
+      );
+    } catch (error) {
+      console.error("List registration requests error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/registration-requests/:id/approve", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden: Only Superadmin can approve registrations." });
+      }
+
+      const { id } = req.params;
+      const { data: reqRow, error: rErr } = await supabase
+        .from("registration_requests").select("*").eq("id", id).maybeSingle();
+      if (rErr) throw new Error(rErr.message);
+      if (!reqRow) return res.status(404).json({ message: "Request not found or already handled." });
+
+      let password: string;
+      try {
+        password = decryptRegPassword(reqRow.enc_password);
+      } catch {
+        return res.status(500).json({
+          message: "Could not read the stored password. Ask the student to register again.",
+        });
+      }
+
+      let userRecord;
+      try {
+        userRecord = await auth.createUser({
+          email: reqRow.email,
+          password,
+          displayName: reqRow.full_name,
+          emailVerified: true,
+        });
+      } catch (createErr: any) {
+        if (createErr.code === "auth/email-already-exists") {
+          await supabase.from("registration_requests").delete().eq("id", id);
+          return res.status(409).json({ message: "An account with this email already exists. Request removed." });
+        }
+        throw createErr;
+      }
+
+      const { error: insErr } = await supabase.from("users").insert(
+        profileToRow({
+          firebaseUid: userRecord.uid,
+          email: reqRow.email,
+          fullName: reqRow.full_name,
+          role: "STUDENT",
+          program: reqRow.program || null,
+          yearLevel: reqRow.year_level || null,
+          isDeleted: false,
+          status: "APPROVED",
+          createdBy: caller.decoded.uid,
+        }),
+      );
+      if (insErr) {
+        await auth.deleteUser(userRecord.uid).catch(() => {});
+        throw new Error(insErr.message);
+      }
+
+      await supabase.from("registration_requests").delete().eq("id", id);
+      await logAudit(caller.decoded.uid, "REGISTRATION_APPROVE", "users", userRecord.uid, {
+        email: reqRow.email,
+      });
+
+      res.json({ message: `${reqRow.full_name} approved. They can now sign in.` });
+    } catch (error: any) {
+      console.error("Approve registration error:", error);
+      res.status(500).json({ message: error.message || "Server error" });
+    }
+  });
+
+  app.post("/api/registration-requests/:id/reject", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden: Only Superadmin can reject registrations." });
+      }
+
+      const { id } = req.params;
+      const { data: reqRow } = await supabase
+        .from("registration_requests").select("email, full_name").eq("id", id).maybeSingle();
+      if (!reqRow) return res.status(404).json({ message: "Request not found or already handled." });
+
+      const { error } = await supabase.from("registration_requests").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+
+      await logAudit(caller.decoded.uid, "REGISTRATION_REJECT", "registration_requests", id, {
+        email: reqRow.email,
+      });
+      res.json({ message: `${reqRow.full_name}'s request was rejected and removed.` });
+    } catch (error: any) {
+      console.error("Reject registration error:", error);
       res.status(500).json({ message: "Server error" });
     }
   });

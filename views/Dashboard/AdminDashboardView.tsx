@@ -143,6 +143,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   const [maxUploadSize, setMaxUploadSize] = useState(30);
 
   const [users, setUsers] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [deletedUsers, setDeletedUsers] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
@@ -174,6 +175,21 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       setUsers(data.filter((u) => !u.isDeleted));
     } catch {
       toast.error("Failed to load users.");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const fetchPendingRequests = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/registration-requests", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      setPendingRequests(await res.json());
+    } catch {
+      toast.error("Failed to load registration requests.");
     } finally {
       setLoading(false);
     }
@@ -226,11 +242,17 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   }, [token]);
 
   useEffect(() => {
-    if (activeTab === "users" || activeTab === "pending") fetchUsers();
+    if (activeTab === "users") fetchUsers();
+    else if (activeTab === "pending") fetchPendingRequests();
     else if (activeTab === "sessions") fetchSessions();
     else if (activeTab === "projects") fetchProjects();
     else if (activeTab === "deleted") fetchDeletedUsers();
-  }, [activeTab, fetchUsers, fetchSessions, fetchProjects, fetchDeletedUsers]);
+  }, [activeTab, fetchUsers, fetchPendingRequests, fetchSessions, fetchProjects, fetchDeletedUsers]);
+
+  // Keep the sidebar badge count current regardless of the active tab.
+  useEffect(() => {
+    fetchPendingRequests();
+  }, [fetchPendingRequests]);
 
   const handleAddUser = async () => {
     if (
@@ -338,37 +360,38 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     }
   };
 
-  const approveUser = async (uid: string, name: string) => {
-    setActionLoading(uid);
+  const approveRequest = async (id: string, name: string) => {
+    setActionLoading(id);
     try {
-      const res = await fetch(`/api/users/${uid}/approve`, {
-        method: "PATCH",
+      const res = await fetch(`/api/registration-requests/${id}/approve`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to approve user");
-      toast.success(`${name} approved.`);
-      fetchUsers();
+      if (!res.ok) throw new Error(data.message || "Failed to approve request");
+      toast.success(data.message || `${name} approved.`);
+      fetchPendingRequests();
+      if (activeTab === "users") fetchUsers();
     } catch (error: any) {
-      toast.error(error.message || "Failed to approve user.");
+      toast.error(error.message || "Failed to approve request.");
     } finally {
       setActionLoading(null);
     }
   };
 
-  const rejectUser = async (uid: string, name: string) => {
-    setActionLoading(uid);
+  const rejectRequest = async (id: string, name: string) => {
+    setActionLoading(id);
     try {
-      const res = await fetch(`/api/users/${uid}/reject`, {
-        method: "PATCH",
+      const res = await fetch(`/api/registration-requests/${id}/reject`, {
+        method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to reject user");
-      toast.success(`${name} rejected.`);
-      fetchUsers();
+      if (!res.ok) throw new Error(data.message || "Failed to reject request");
+      toast.success(data.message || `${name}'s request rejected.`);
+      fetchPendingRequests();
     } catch (error: any) {
-      toast.error(error.message || "Failed to reject user.");
+      toast.error(error.message || "Failed to reject request.");
     } finally {
       setActionLoading(null);
     }
@@ -382,7 +405,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     }, 1200);
   };
 
-  const pendingUsers = users.filter((u) => u.status === "PENDING");
   const activeUsers = users.filter((u) => u.status !== "PENDING");
   const visibleUsers = (() => {
     const q = userSearch.trim().toLowerCase();
@@ -547,9 +569,9 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
               )}
               <span className="relative z-10 flex items-center gap-3">
                 {item.icon} {item.label}
-                {item.id === "pending" && pendingUsers.length > 0 && (
+                {item.id === "pending" && pendingRequests.length > 0 && (
                   <span className="ml-auto bg-white/20 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-                    {pendingUsers.length}
+                    {pendingRequests.length}
                   </span>
                 )}
               </span>
@@ -975,7 +997,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {pendingUsers.map((u, i) => (
+                        {pendingRequests.map((u, i) => (
                           <motion.tr
                             key={u.id}
                             custom={i}
@@ -1006,7 +1028,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                               <div className="flex items-center justify-end gap-2">
                                 <motion.button
                                   type="button"
-                                  onClick={() => rejectUser(u.id, u.fullName)}
+                                  onClick={() => rejectRequest(u.id, u.fullName)}
                                   disabled={actionLoading === u.id}
                                   className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-[10px] font-black rounded-xl uppercase tracking-tighter disabled:opacity-50"
                                   whileHover={{
@@ -1026,7 +1048,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                                 </motion.button>
                                 <motion.button
                                   type="button"
-                                  onClick={() => approveUser(u.id, u.fullName)}
+                                  onClick={() => approveRequest(u.id, u.fullName)}
                                   disabled={actionLoading === u.id}
                                   className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30 text-[10px] font-black rounded-xl uppercase tracking-tighter disabled:opacity-50"
                                   whileHover={{
@@ -1048,7 +1070,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                             </td>
                           </motion.tr>
                         ))}
-                        {pendingUsers.length === 0 && (
+                        {pendingRequests.length === 0 && (
                           <tr>
                             <td
                               colSpan={4}
