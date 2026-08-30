@@ -6,6 +6,7 @@ import {
   ChevronRight, Play, Info, CheckCircle, Circle,
   Target, TrendingUp, Clock, Plus, ExternalLink,
   ShieldCheck, AlertCircle, Trash2, Loader2, AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { ProjectProfile, SessionResult } from '../../types';
 import DefenseGuideModal from '../components/DefenseGuideModal';
@@ -63,6 +64,32 @@ const DashboardView: React.FC<Props> = ({
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+
+  const handleExportData = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      profile: {
+        fullName: user?.fullName ?? null,
+        email: user?.email ?? null,
+        program: user?.program ?? null,
+        yearLevel: user?.yearLevel ?? null,
+        role: user?.role ?? null,
+      },
+      project: project ?? null,
+      sessions: sessionHistory,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `defensa-data-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const handleConfirmRemove = async () => {
     setRemoving(true);
@@ -499,6 +526,19 @@ const DashboardView: React.FC<Props> = ({
                         )}
                       </div>
                       <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">This token identifies your session. Do not share it with anyone.</p>
+                    </div>
+                    <div className="p-6 bg-slate-50 dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800">
+                      <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Export My Data</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">Download a copy of your profile, project, and every practice session as a single JSON file.</p>
+                      <motion.button
+                        type="button"
+                        onClick={handleExportData}
+                        className="w-full px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.99 }}
+                      >
+                        Download data file <Download className="w-5 h-5" />
+                      </motion.button>
                     </div>
                   </div>
                 </motion.div>
