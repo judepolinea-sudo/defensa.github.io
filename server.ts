@@ -126,7 +126,7 @@ function isValidRole(role: string): role is AppRole {
 // bootstrap admin are exempt.
 // ===============================================================
 
-const ALLOWED_SIGNUP_DOMAINS = ["students.nu-clark.edu.ph"];
+const ALLOWED_SIGNUP_DOMAINS = ["nuclark.edu.ph"];
 
 function isAllowedSignupEmail(email: string | undefined | null): boolean {
   if (!email) return false;
@@ -137,7 +137,7 @@ function isAllowedSignupEmail(email: string | undefined | null): boolean {
 }
 
 const SIGNUP_DOMAIN_MESSAGE =
-  "Only @students.nu-clark.edu.ph email accounts can sign up.";
+  "Only @nuclark.edu.ph email accounts can sign up.";
 
 // ===============================================================
 // REGISTRATION REQUEST PASSWORD ENCRYPTION
