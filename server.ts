@@ -347,6 +347,51 @@ async function getSupabaseUserByFirebaseUid(
 export async function createApp() {
   const app = express();
 
+  // ===============================================================
+  // SECURITY HEADERS
+  // Baseline hardening for securityheaders.com. Applied to every response
+  // (static files, the SPA shell, and the API) before any other middleware.
+  // ===============================================================
+  const CSP = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'self'",
+    "form-action 'self'",
+    // No inline scripts in the build. 'unsafe-eval' is required only by the
+    // Tailwind Play CDN (cdn.tailwindcss.com); removing that CDN in favour of
+    // a build-time Tailwind step would let this drop too.
+    "script-src 'self' 'unsafe-eval' https://cdn.tailwindcss.com https://apis.google.com https://www.gstatic.com",
+    // 'unsafe-inline' for styles: Tailwind, Framer Motion and Recharts all
+    // inject inline <style>/style attributes at runtime.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: blob: https:",
+    "connect-src 'self' https: wss:",
+    "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
+    "worker-src 'self' blob:",
+    "media-src 'self' blob:",
+    "manifest-src 'self'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+
+  app.use((req, res, next) => {
+    const proto = (req.headers["x-forwarded-proto"] || "").toString().split(",")[0].trim();
+    if (req.secure || proto === "https") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    }
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(self), geolocation=(), payment=(), usb=(), " +
+        "magnetometer=(), gyroscope=(), accelerometer=(), interest-cohort=()",
+    );
+    res.setHeader("Content-Security-Policy", CSP);
+    next();
+  });
+
   app.use(cors());
   app.use(express.json({ limit: "20mb" }));
 
