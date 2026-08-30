@@ -500,12 +500,6 @@ const DashboardView: React.FC<Props> = ({
                       </div>
                       <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">This token identifies your session. Do not share it with anyone.</p>
                     </div>
-                    <motion.button className="w-full px-8 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl text-slate-700 dark:text-slate-300 font-black uppercase tracking-tighter text-sm text-left flex justify-between items-center transition-colors" whileHover={{ x: 4 }} whileTap={{ scale: 0.99 }}>
-                      Change Password <ChevronRight className="w-5 h-5" />
-                    </motion.button>
-                    <motion.button className="w-full px-8 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl text-slate-700 dark:text-slate-300 font-black uppercase tracking-tighter text-sm text-left flex justify-between items-center transition-colors" whileHover={{ x: 4 }} whileTap={{ scale: 0.99 }}>
-                      Two-Factor Authentication <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 rounded-full text-[10px] font-black uppercase tracking-widest">Disabled</span>
-                    </motion.button>
                   </div>
                 </motion.div>
               </div>
