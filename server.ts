@@ -206,8 +206,8 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   // auto-provisioned as STUDENT on first login.
   if (decoded.firebase?.sign_in_provider !== "google.com") return null;
 
-  // Google self-provisioning is limited to the allowed student email domain.
-  if (!isAllowedSignupEmail(decoded.email)) return null;
+  // Google sign-in works for any Google account. The @nu-clark.edu.ph rule
+  // applies only to the email/password self-registration form.
 
   const { data: created, error: createErr } = await supabase
     .from("users")
@@ -514,14 +514,9 @@ export async function createApp() {
         // No Supabase profile yet. For a Google sign-in this is a first login:
         // verifyAndGetCaller auto-provisions a STUDENT account (and is race-safe
         // against the parallel onAuthStateChanged call). Email/password accounts
-        // still require an admin to create them first.
+        // still require an admin to create them first, and the @nu-clark.edu.ph
+        // rule applies only to the email/password registration form.
         if (decoded.firebase?.sign_in_provider === "google.com") {
-          if (!isAllowedSignupEmail(decoded.email)) {
-            return res.status(403).json({
-              message: SIGNUP_DOMAIN_MESSAGE,
-              code: "EMAIL_DOMAIN_NOT_ALLOWED",
-            });
-          }
           const caller = await verifyAndGetCaller(authHeader);
           if (caller) return res.json({ user: caller.profile });
         }
