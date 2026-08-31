@@ -52,10 +52,10 @@ class SessionErrorBoundary extends Component<{ children: React.ReactNode; onRese
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#070C16] text-white flex items-center justify-center p-8">
+        <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-8">
           <div className="text-center max-w-lg">
-            <div className="w-20 h-20 bg-red-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-              <AlertCircle className="w-10 h-10 text-red-400" />
+            <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-red-200">
+              <AlertCircle className="w-10 h-10 text-red-600" />
             </div>
             <h2 className="text-2xl font-black uppercase tracking-tight mb-3">Session Error</h2>
             <p className="text-slate-400 mb-2 text-sm">{this.state.errorMessage}</p>
@@ -85,16 +85,16 @@ const MAX_FOLLOWUPS = 3;
 const SATISFACTION_THRESHOLD = 75;
 
 const DIFFICULTY_META: Record<string, { color: string; bg: string; border: string; dot: string }> = {
-  Easy:     { color: 'text-emerald-300', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', dot: 'bg-emerald-400' },
-  Moderate: { color: 'text-amber-300',   bg: 'bg-amber-500/10',   border: 'border-amber-500/25',   dot: 'bg-amber-400' },
-  Hard:     { color: 'text-orange-300',  bg: 'bg-orange-500/10',  border: 'border-orange-500/25',  dot: 'bg-orange-400' },
-  Expert:   { color: 'text-red-300',     bg: 'bg-red-500/10',     border: 'border-red-500/25',     dot: 'bg-red-400' },
+  Easy:     { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  Moderate: { color: 'text-amber-700',   bg: 'bg-amber-50',   border: 'border-amber-200',   dot: 'bg-amber-500' },
+  Hard:     { color: 'text-orange-700',  bg: 'bg-orange-50',  border: 'border-orange-200',  dot: 'bg-orange-500' },
+  Expert:   { color: 'text-red-700',     bg: 'bg-red-50',     border: 'border-red-200',     dot: 'bg-red-500' },
 };
 
 function scoreColor(val: number) {
-  if (val >= 80) return 'text-emerald-400';
-  if (val >= 65) return 'text-amber-400';
-  return 'text-red-400';
+  if (val >= 80) return 'text-emerald-600';
+  if (val >= 65) return 'text-amber-600';
+  return 'text-red-600';
 }
 
 function scoreBg(val: number) {
@@ -104,9 +104,9 @@ function scoreBg(val: number) {
 }
 
 function verdictLabel(val: number) {
-  if (val >= 80) return { label: 'Correct',       color: 'text-emerald-400', bg: 'bg-emerald-500/15 border-emerald-500/30' };
-  if (val >= 60) return { label: 'Partial',        color: 'text-amber-400',   bg: 'bg-amber-500/15 border-amber-500/30' };
-  return            { label: 'Insufficient',    color: 'text-red-400',     bg: 'bg-red-500/15 border-red-500/30' };
+  if (val >= 80) return { label: 'Correct',       color: 'text-emerald-600', bg: 'bg-emerald-100 border-emerald-300' };
+  if (val >= 60) return { label: 'Partial',        color: 'text-amber-600',   bg: 'bg-amber-100 border-amber-300' };
+  return            { label: 'Insufficient',    color: 'text-red-600',     bg: 'bg-red-100 border-red-300' };
 }
 
 function formatTime(seconds: number) {
@@ -144,21 +144,21 @@ const MicTestButton: React.FC = () => {
     <div className="flex flex-col items-center gap-2 mb-4">
       {state === 'idle' && (
         <button type="button" onClick={runTest}
-          className="flex items-center gap-2 px-5 py-2.5 bg-white/5 border border-white/10 text-slate-400 text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-white/10 transition-all">
+          className="flex items-center gap-2 px-5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold uppercase tracking-widest rounded-xl hover:bg-slate-200 transition-all">
           <Mic className="w-4 h-4" /> Test Microphone
         </button>
       )}
-      {state === 'testing' && <div className="flex items-center gap-2 text-blue-400 text-xs font-bold"><div className="w-2 h-2 rounded-full bg-red-400 motion-safe:animate-pulse" />{msg}</div>}
+      {state === 'testing' && <div className="flex items-center gap-2 text-blue-600 text-xs font-bold"><div className="w-2 h-2 rounded-full bg-red-400 motion-safe:animate-pulse" />{msg}</div>}
       {state === 'ok' && (
-        <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+        <div className="flex items-center gap-2 text-emerald-600 text-xs font-bold">
           <CheckCircle2 className="w-4 h-4" />{msg}
-          <button type="button" onClick={() => { sttRef.current?.stop(); setState('idle'); setMsg(''); }} className="text-slate-500 hover:text-slate-300 underline text-xs">reset</button>
+          <button type="button" onClick={() => { sttRef.current?.stop(); setState('idle'); setMsg(''); }} className="text-slate-500 hover:text-slate-600 underline text-xs">reset</button>
         </div>
       )}
       {state === 'error' && (
         <div className="text-center">
-          <div className="flex items-center gap-2 text-red-400 text-xs font-bold justify-center mb-1"><AlertCircle className="w-4 h-4" />{msg}</div>
-          <button type="button" onClick={runTest} className="text-blue-400 text-xs font-bold hover:text-blue-300">Try Again</button>
+          <div className="flex items-center gap-2 text-red-600 text-xs font-bold justify-center mb-1"><AlertCircle className="w-4 h-4" />{msg}</div>
+          <button type="button" onClick={runTest} className="text-blue-600 text-xs font-bold hover:text-blue-600">Try Again</button>
         </div>
       )}
     </div>
@@ -175,20 +175,20 @@ interface ConfirmDialogProps {
   danger?: boolean;
 }
 const ConfirmDialog: React.FC<ConfirmDialogProps> = ({ title, message, confirmLabel, cancelLabel, onConfirm, onCancel, danger }) => (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-    <div className="bg-[#0C1425] border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl shadow-black/60 animate-in fade-in zoom-in-95 duration-200">
-      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 ${danger ? 'bg-red-500/15 border border-red-500/20' : 'bg-blue-500/15 border border-blue-500/20'}`}>
-        <StopCircle className={`w-7 h-7 ${danger ? 'text-red-400' : 'text-blue-400'}`} />
+  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm">
+    <div className="bg-white border border-slate-200 rounded-3xl p-8 max-w-md w-full shadow-xl shadow-slate-300/50 animate-in fade-in zoom-in-95 duration-200">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5 ${danger ? 'bg-red-100 border border-red-200' : 'bg-blue-100 border border-blue-200'}`}>
+        <StopCircle className={`w-7 h-7 ${danger ? 'text-red-600' : 'text-blue-600'}`} />
       </div>
-      <h3 className="text-lg font-black text-white text-center mb-2 uppercase tracking-tight">{title}</h3>
+      <h3 className="text-lg font-black text-slate-800 text-center mb-2 uppercase tracking-tight">{title}</h3>
       <p className="text-slate-400 text-sm text-center mb-8 leading-relaxed">{message}</p>
       <div className="flex gap-3">
         <button type="button" onClick={onCancel}
-          className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-bold rounded-2xl text-sm transition-all uppercase tracking-widest">
+          className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 font-bold rounded-2xl text-sm transition-all uppercase tracking-widest">
           {cancelLabel}
         </button>
         <button type="button" onClick={onConfirm}
-          className={`flex-1 py-3.5 font-black rounded-2xl text-sm transition-all uppercase tracking-widest ${danger ? 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/30' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30'}`}>
+          className={`flex-1 py-3.5 font-black rounded-2xl text-sm transition-all uppercase tracking-widest ${danger ? 'bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-200' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-200'}`}>
           {confirmLabel}
         </button>
       </div>
@@ -807,10 +807,10 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
   if (!project) {
     return (
-      <div className="min-h-screen bg-[#070C16] text-white flex items-center justify-center p-8">
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-8">
         <div className="text-center max-w-md">
-          <div className="w-16 h-16 bg-red-500/10 border border-red-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="w-8 h-8 text-red-400" />
+          <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-8 h-8 text-red-600" />
           </div>
           <h2 className="text-xl font-black uppercase tracking-tight mb-2">No Project Found</h2>
           <p className="text-slate-400 text-sm mb-8">Your group does not have a project yet. Return to the dashboard and create one first.</p>
@@ -828,12 +828,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   // ─────────────────────────────────────────────────────────────────
 
   const Header = () => (
-    <header className="h-14 px-5 border-b border-white/[0.07] flex items-center justify-between bg-[#070C16]/98 backdrop-blur-md sticky top-0 z-50 shrink-0">
+    <header className="h-14 px-5 border-b border-slate-200 flex items-center justify-between bg-white/90 backdrop-blur-md sticky top-0 z-50 shrink-0">
       {/* Left: branding */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-black text-sm shadow-lg shadow-blue-500/25">D</div>
+        <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-sm shadow-lg shadow-blue-200">D</div>
         <div className="hidden sm:block">
-          <p className="font-black text-xs uppercase tracking-widest text-white leading-none">Defensa</p>
+          <p className="font-black text-xs uppercase tracking-widest text-slate-800 leading-none">Defensa</p>
           <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{project.title}</p>
         </div>
       </div>
@@ -844,19 +844,19 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
           {/* Timer — shifts amber → red as time runs low */}
           <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-mono text-sm font-black border transition-colors duration-500 ${
             timeLeft < 60
-              ? 'bg-red-500/20 border-red-500/30 text-red-300'
+              ? 'bg-red-100 border-red-300 text-red-600'
               : timeLeft < 180
-              ? 'bg-amber-500/15 border-amber-500/25 text-amber-300'
-              : 'bg-white/5 border-white/10 text-slate-200'
+              ? 'bg-amber-100 border-amber-200 text-amber-600'
+              : 'bg-slate-100 border-slate-200 text-slate-600'
           }`}>
             <Timer className="w-3.5 h-3.5" />
             <span>{formatTime(timeLeft)}</span>
           </div>
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs font-bold">
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold">
             <FileText className="w-3.5 h-3.5" />Q{questionsAsked}
           </div>
           {runningAvg !== null && (
-            <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs font-black ${scoreColor(runningAvg)}`}>
+            <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-xs font-black ${scoreColor(runningAvg)}`}>
               <BarChart3 className="w-3.5 h-3.5" />{runningAvg}
             </div>
           )}
@@ -866,27 +866,27 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       {/* Right: controls */}
       <div className="flex items-center gap-2">
         {isVoiceEnabled && (uiState === 'active' || uiState === 'feedback') && (
-          <div className="flex items-center gap-1 px-2 py-1.5 bg-white/5 border border-white/10 rounded-lg">
+          <div className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 border border-slate-200 rounded-lg">
             <button type="button" title={isMuted ? 'Unmute' : 'Mute'} onClick={() => { setIsMuted(m => !m); if (!isMuted) stopSpeaking(); }}
-              className="p-1 rounded hover:bg-white/10 transition-all text-slate-400 hover:text-white">
+              className="p-1 rounded hover:bg-slate-100 transition-all text-slate-400 hover:text-slate-800">
               {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
             {currentQuestion && !isTtsSpeaking && uiState === 'active' && (
               <button type="button" title="Replay question" onClick={() => speakQuestion(currentQuestion.question, currentQuestion.panelist?.role || '', currentQuestion.panelist?.name)}
-                className="p-1 rounded hover:bg-white/10 transition-all text-slate-400 hover:text-white">
+                className="p-1 rounded hover:bg-slate-100 transition-all text-slate-400 hover:text-slate-800">
                 <Play className="w-3.5 h-3.5" />
               </button>
             )}
             {isTtsSpeaking && (
               <button type="button" title="Stop speaking" aria-label="Stop speaking" onClick={() => { stopSpeaking(); setIsTtsSpeaking(false); }}
-                className="p-1 rounded hover:bg-white/10 transition-all text-red-400">
+                className="p-1 rounded hover:bg-slate-200 transition-all text-red-600">
                 <Square className="w-3.5 h-3.5" />
               </button>
             )}
             <div className="flex items-center gap-0.5 ml-1">
               {[0.75, 1.0, 1.25].map(r => (
                 <button key={r} type="button" onClick={() => setSpeakRate(r)}
-                  className={`px-1 py-0.5 text-[10px] font-black rounded transition-all ${speakRate === r ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}>
+                  className={`px-1 py-0.5 text-[10px] font-black rounded transition-all ${speakRate === r ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}`}>
                   {r}×
                 </button>
               ))}
@@ -897,14 +897,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
         {/* End Session — quiet ghost, only in header */}
         {(uiState === 'active' || uiState === 'feedback') && (
           <button type="button" onClick={() => setShowEndConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/[0.08] border border-transparent hover:border-red-500/20 text-xs font-bold rounded-lg transition-all uppercase tracking-wider">
+            className="flex items-center gap-1.5 px-3 py-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 border border-transparent hover:border-red-200 text-xs font-bold rounded-lg transition-all uppercase tracking-wider">
             <StopCircle className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">End</span>
           </button>
         )}
 
         <button type="button" onClick={() => (uiState === 'intro' || uiState === 'generating') ? onExit() : setShowExitConfirm(true)}
-          title="Exit" className="p-2 hover:bg-white/8 text-slate-500 hover:text-slate-300 rounded-lg transition-all">
+          title="Exit" className="p-2 hover:bg-slate-100 text-slate-500 hover:text-slate-600 rounded-lg transition-all">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -921,17 +921,17 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       <aside className={`flex flex-col gap-3 h-full overflow-y-auto ${dragScrollClass}`} {...dragScrollHandlers}>
         {/* Active panelist — hero card */}
         {activePanelist ? (
-          <div className="p-5 rounded-2xl border bg-gradient-to-b from-blue-600/20 to-[#0C1425] border-blue-500/35 ring-1 ring-blue-500/20 shadow-xl shadow-blue-900/20 flex flex-col items-center text-center gap-3">
+          <div className="p-5 rounded-2xl border bg-gradient-to-b from-blue-50 to-white border-blue-300 ring-1 ring-blue-200 shadow-xl shadow-blue-100 flex flex-col items-center text-center gap-3">
             <div className="relative">
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-black border-2 transition-all duration-300 ${
                 isTtsSpeaking
-                  ? 'bg-blue-500/40 border-blue-400/70 text-white shadow-lg shadow-blue-500/25'
-                  : 'bg-blue-600/25 border-blue-500/45 text-blue-200'
+                  ? 'bg-blue-100 border-blue-300 text-blue-700 shadow-lg shadow-blue-200'
+                  : 'bg-blue-100 border-blue-300 text-blue-700'
               }`}>
                 {getInitials(activePanelist.name)}
               </div>
               {isTtsSpeaking && (
-                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-[3px] items-end bg-[#0C1425] px-2 py-0.5 rounded-full border border-blue-500/30">
+                <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-[3px] items-end bg-white px-2 py-0.5 rounded-full border border-blue-300">
                   <div className="w-[3px] h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" />
                   <div className="w-[3px] h-2.5 rounded-full bg-blue-400 motion-safe:animate-bounce [animation-delay:150ms]" />
                   <div className="w-[3px] h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce [animation-delay:300ms]" />
@@ -939,19 +939,19 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
               )}
             </div>
             <div>
-              <p className="font-black text-sm text-white leading-tight">{activePanelist.name}</p>
-              <p className="text-[10px] text-blue-300 font-bold uppercase tracking-widest mt-0.5">{activePanelist.role}</p>
+              <p className="font-black text-sm text-slate-800 leading-tight">{activePanelist.name}</p>
+              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-0.5">{activePanelist.role}</p>
             </div>
 
             {/* Status badge — SVG icons only, no emoji */}
             <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border flex items-center gap-1.5 ${
               isTtsSpeaking
-                ? 'bg-blue-500/20 border-blue-400/40 text-blue-300'
+                ? 'bg-blue-100 border-blue-300 text-blue-600'
                 : uiState === 'evaluating'
-                ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                ? 'bg-amber-100 border-amber-300 text-amber-600'
                 : uiState === 'feedback'
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-                : 'bg-blue-600/15 border-blue-500/25 text-blue-300'
+                ? 'bg-emerald-100 border-emerald-300 text-emerald-600'
+                : 'bg-blue-50 border-blue-200 text-blue-600'
             }`}>
               {isTtsSpeaking ? (
                 <><span className="w-1.5 h-1.5 rounded-full bg-current motion-safe:animate-pulse shrink-0" />Speaking</>
@@ -967,8 +967,8 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             <p className="text-[9px] text-slate-500 leading-relaxed line-clamp-3">{activePanelist.persona?.split('.')[0]}.</p>
           </div>
         ) : (
-          <div className="p-5 rounded-2xl border border-white/8 bg-white/[0.02] flex flex-col items-center text-center gap-3 opacity-60">
-            <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+          <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 flex flex-col items-center text-center gap-3 opacity-60">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center">
               <Users className="w-7 h-7 text-slate-500" />
             </div>
             <p className="text-xs text-slate-500 font-bold">Awaiting question…</p>
@@ -980,12 +980,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
           <div className="space-y-1.5">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2">Also on the panel</p>
             {others.map(p => (
-              <div key={p.id} className="flex items-center gap-2.5 px-3 py-2.5 bg-white/[0.02] border border-white/[0.07] rounded-xl opacity-60 hover:opacity-80 transition-opacity">
-                <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 text-slate-400 flex items-center justify-center text-[10px] font-black shrink-0">
+              <div key={p.id} className="flex items-center gap-2.5 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl opacity-60 hover:opacity-80 transition-opacity">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 text-slate-400 flex items-center justify-center text-[10px] font-black shrink-0">
                   {getInitials(p.name)}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black text-slate-300 truncate">{p.name}</p>
+                  <p className="text-[10px] font-black text-slate-600 truncate">{p.name}</p>
                   <p className="text-[9px] text-slate-400 truncate">{p.role}</p>
                 </div>
               </div>
@@ -1002,11 +1002,11 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   const RightPanel = () => (
     <aside className={`flex flex-col gap-4 overflow-y-auto ${dragScrollClass}`} {...dragScrollHandlers}>
       {/* Coverage progress */}
-      <div className="p-4 bg-white/[0.02] border border-white/[0.07] rounded-2xl">
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
         <div className="flex items-center gap-2 mb-4">
           <Target className="w-3.5 h-3.5 text-slate-400" />
           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Section Coverage</span>
-          <span className="ml-auto text-[10px] font-black text-blue-400">{coveredCount}/{totalSections}</span>
+          <span className="ml-auto text-[10px] font-black text-blue-600">{coveredCount}/{totalSections}</span>
         </div>
         <div className="space-y-3">
           {Object.values(coverageMap).map(s => {
@@ -1015,21 +1015,21 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             const isCapped = cappedSections.has(s.section);
             const barColor = isCovered
               ? (isCapped ? 'bg-amber-500' : 'bg-emerald-500')
-              : isActive ? 'bg-blue-500' : 'bg-slate-700';
+              : isActive ? 'bg-blue-500' : 'bg-slate-300';
             const textColor = isCovered
-              ? (isCapped ? 'text-amber-400' : 'text-emerald-400')
-              : isActive ? 'text-blue-300 font-black' : 'text-slate-400';
+              ? (isCapped ? 'text-amber-600' : 'text-emerald-600')
+              : isActive ? 'text-blue-600 font-black' : 'text-slate-400';
             const scoreTextColor = isCovered
-              ? (isCapped ? 'text-amber-400' : 'text-emerald-400')
-              : isActive ? 'text-blue-400' : 'text-slate-500';
+              ? (isCapped ? 'text-amber-600' : 'text-emerald-600')
+              : isActive ? 'text-blue-600' : 'text-slate-500';
             return (
               <div key={s.section} className={`transition-all duration-300 ${isActive ? 'opacity-100' : 'opacity-75'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className={`flex items-center gap-1 min-w-0 text-[10px] font-bold ${textColor}`}>
                     {isCovered
-                      ? <CheckCircle2 className={`w-3 h-3 shrink-0 ${isCapped ? 'text-amber-400' : 'text-emerald-400'}`} />
+                      ? <CheckCircle2 className={`w-3 h-3 shrink-0 ${isCapped ? 'text-amber-600' : 'text-emerald-600'}`} />
                       : isActive
-                      ? <ChevronRight className="w-3 h-3 shrink-0 text-blue-400" />
+                      ? <ChevronRight className="w-3 h-3 shrink-0 text-blue-600" />
                       : <span className="w-3 shrink-0" />
                     }
                     <span className="truncate max-w-[110px]">{s.section}</span>
@@ -1037,7 +1037,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   </div>
                   <span className={`text-[10px] font-black ml-1 shrink-0 ${scoreTextColor}`}>{s.mastery}%</span>
                 </div>
-                <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                   <ProgressFill pct={s.mastery} className={`h-full rounded-full transition-all duration-700 ${barColor}`} />
                 </div>
               </div>
@@ -1048,7 +1048,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
       {/* Running score */}
       {runningAvg !== null && (
-        <div className="p-4 bg-white/[0.02] border border-white/[0.07] rounded-2xl">
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Running Score</span>
@@ -1057,7 +1057,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             <span className={`text-3xl font-black leading-none ${scoreColor(runningAvg)}`}>{runningAvg}</span>
             <span className="text-slate-500 text-sm font-bold">/100</span>
           </div>
-          <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+          <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
             <ProgressFill pct={runningAvg} className={`h-full rounded-full transition-all duration-700 ${scoreBg(runningAvg)}`} />
           </div>
         </div>
@@ -1065,7 +1065,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
       {/* Question history */}
       {history.length > 0 && (
-        <div className="p-4 bg-white/[0.02] border border-white/[0.07] rounded-2xl flex flex-col gap-2 min-h-0">
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col gap-2 min-h-0">
           <div className="flex items-center gap-2 mb-1">
             <BookOpen className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">History</span>
@@ -1075,7 +1075,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             {[...history].reverse().map((h, i) => {
               const verdict = verdictLabel(h.feedback.score);
               return (
-                <div key={i} className="p-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+                <div key={i} className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Q{history.length - i}</span>
                     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${verdict.bg} ${verdict.color}`}>{verdict.label}</span>
@@ -1099,7 +1099,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   // ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#070C16] text-white flex flex-col font-sans [zoom:1.12]">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans [zoom:1.12]">
       <Header />
 
       {/* Dialogs */}
@@ -1127,12 +1127,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       )}
 
       {showInactivityPrompt && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-          <div className="bg-[#0C1425] border border-white/10 rounded-3xl p-8 max-w-sm w-full shadow-2xl shadow-black/60 animate-in fade-in zoom-in-95 duration-200 text-center">
-            <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
-              <Timer className="w-8 h-8 text-amber-400" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/30 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl p-8 max-w-sm w-full shadow-xl shadow-slate-300/50 animate-in fade-in zoom-in-95 duration-200 text-center">
+            <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <Timer className="w-8 h-8 text-amber-600" />
             </div>
-            <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Are you still there?</h3>
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">Are you still there?</h3>
             <p className="text-slate-400 text-sm mb-7 leading-relaxed">
               No activity detected for 30 seconds. Your session will auto-save and end in 30 seconds.
             </p>
@@ -1142,7 +1142,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                 I'm Here
               </button>
               <button type="button" onClick={() => { setShowInactivityPrompt(false); completeSession(history); }}
-                className="flex-1 py-3 bg-white/10 hover:bg-white/15 text-white font-black rounded-2xl uppercase tracking-widest text-xs transition-all">
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-2xl uppercase tracking-widest text-xs transition-all">
                 End Session
               </button>
             </div>
@@ -1157,15 +1157,15 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
           const dur = config?.duration || 30;
           const diff = config?.difficulty || 'Intermediate';
           const mode = config?.mode || 'text';
-          const diffColor = diff === 'Beginner' ? 'text-emerald-400' : diff === 'Advanced' ? 'text-red-400' : 'text-amber-400';
-          const diffBg = diff === 'Beginner' ? 'bg-emerald-500/10 border-emerald-500/20' : diff === 'Advanced' ? 'bg-red-500/10 border-red-500/20' : 'bg-amber-500/10 border-amber-500/20';
+          const diffColor = diff === 'Beginner' ? 'text-emerald-600' : diff === 'Advanced' ? 'text-red-600' : 'text-amber-600';
+          const diffBg = diff === 'Beginner' ? 'bg-emerald-50 border-emerald-200' : diff === 'Advanced' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200';
 
           return (
             <div className={`h-full overflow-y-auto flex items-start justify-center p-6 ${dragScrollClass}`} {...dragScrollHandlers}>
               <div className="max-w-3xl w-full py-6">
                 <div className="text-center mb-10">
-                  <div className="w-16 h-16 bg-blue-600/20 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                    <Sparkles className="w-8 h-8 text-blue-400" />
+                  <div className="w-16 h-16 bg-blue-100 border border-blue-200 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <Sparkles className="w-8 h-8 text-blue-600" />
                   </div>
                   <h2 className="text-3xl font-black uppercase tracking-tight mb-2">Defense Simulation Ready</h2>
                   <p className="text-slate-400 text-sm max-w-lg mx-auto">
@@ -1174,20 +1174,20 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                 </div>
 
                 <div className="grid grid-cols-3 gap-3 mb-8">
-                  <div className="p-5 bg-white/[0.03] border border-white/[0.07] rounded-2xl text-center">
-                    <Timer className="w-5 h-5 text-blue-400 mx-auto mb-2" />
+                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                    <Timer className="w-5 h-5 text-blue-600 mx-auto mb-2" />
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Duration</p>
-                    <p className="font-black text-white">{dur} min</p>
+                    <p className="font-black text-slate-800">{dur} min</p>
                   </div>
                   <div className={`p-5 border rounded-2xl text-center ${diffBg}`}>
                     <div className={`w-5 h-5 rounded-full mx-auto mb-2 ${diff === 'Beginner' ? 'bg-emerald-400' : diff === 'Advanced' ? 'bg-red-400' : 'bg-amber-400'}`} />
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Difficulty</p>
                     <p className={`font-black ${diffColor}`}>{diff}</p>
                   </div>
-                  <div className="p-5 bg-white/[0.03] border border-white/[0.07] rounded-2xl text-center">
-                    <Mic className="w-5 h-5 text-emerald-400 mx-auto mb-2" />
+                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-center">
+                    <Mic className="w-5 h-5 text-emerald-600 mx-auto mb-2" />
                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Mode</p>
-                    <p className="font-black text-white capitalize">{mode}</p>
+                    <p className="font-black text-slate-800 capitalize">{mode}</p>
                   </div>
                 </div>
 
@@ -1195,10 +1195,10 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 text-center">Your Examination Panel</p>
                   <div className={`grid gap-3 ${selectedPanelists.length <= 2 ? 'grid-cols-2 max-w-sm mx-auto' : selectedPanelists.length === 3 ? 'grid-cols-3' : 'grid-cols-2 md:grid-cols-4'}`}>
                     {selectedPanelists.map(p => (
-                      <div key={p.id} className="p-4 bg-blue-600/8 border border-blue-500/15 rounded-2xl text-center">
-                        <div className="w-10 h-10 bg-blue-600/20 text-blue-400 rounded-xl flex items-center justify-center text-sm font-black mx-auto mb-2 border border-blue-500/20">{getInitials(p.name)}</div>
-                        <p className="font-black text-xs text-white truncate mb-0.5">{p.name}</p>
-                        <p className="text-[10px] text-blue-300 font-bold">{p.role}</p>
+                      <div key={p.id} className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-center">
+                        <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-sm font-black mx-auto mb-2 border border-blue-200">{getInitials(p.name)}</div>
+                        <p className="font-black text-xs text-slate-800 truncate mb-0.5">{p.name}</p>
+                        <p className="text-[10px] text-blue-600 font-bold">{p.role}</p>
                       </div>
                     ))}
                   </div>
@@ -1208,7 +1208,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                 <div className="text-center">
                   <button type="button" onClick={initializeSession}
-                    className="inline-flex items-center gap-3 px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl transition-all shadow-xl shadow-blue-900/40 uppercase tracking-widest text-sm">
+                    className="inline-flex items-center gap-3 px-12 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl transition-all shadow-xl shadow-blue-200 uppercase tracking-widest text-sm">
                     Begin Defense <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
@@ -1224,27 +1224,27 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             <ShaderBackground />
 
             {/* Dark vignette so the center text stays readable */}
-            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-transparent via-[#070C16]/60 to-[#070C16]/90 pointer-events-none" />
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-slate-50/50 via-slate-50/80 to-slate-50/95 pointer-events-none" />
 
             {/* Content card */}
             <div className="relative z-10 text-center max-w-sm">
               {/* Skeleton lines — shimmer over the shader */}
               <div className="w-full space-y-2.5 mb-8 opacity-30">
-                <div className="h-3 bg-white/20 rounded-full motion-safe:animate-pulse w-3/4 mx-auto" />
-                <div className="h-3 bg-white/20 rounded-full motion-safe:animate-pulse w-full" />
-                <div className="h-3 bg-white/20 rounded-full motion-safe:animate-pulse w-5/6 mx-auto" />
-                <div className="h-3 bg-white/20 rounded-full motion-safe:animate-pulse w-2/3 mx-auto" />
+                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-3/4 mx-auto" />
+                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-full" />
+                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-5/6 mx-auto" />
+                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-2/3 mx-auto" />
               </div>
 
               {/* Spinner */}
-              <div className="w-14 h-14 bg-blue-600/30 border border-blue-500/40 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-900/40 backdrop-blur-sm">
-                <Loader2 className="w-7 h-7 text-blue-300 animate-spin" />
+              <div className="w-14 h-14 bg-blue-100 border border-blue-300 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-200 backdrop-blur-sm">
+                <Loader2 className="w-7 h-7 text-blue-600 animate-spin" />
               </div>
 
-              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-white drop-shadow-lg">
+              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-slate-800">
                 Panel Preparing
               </h2>
-              <p className="text-slate-300/80 text-sm leading-relaxed drop-shadow">
+              <p className="text-slate-500 text-sm leading-relaxed">
                 Analyzing your research document and formulating your first question…
               </p>
             </div>
@@ -1256,7 +1256,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
           <div className="h-[calc(100vh-56px)] grid grid-cols-1 lg:grid-cols-[220px_1fr_240px] gap-0 overflow-hidden">
 
             {/* Left sidebar */}
-            <div className={`hidden lg:flex flex-col p-4 border-r border-white/[0.07] overflow-y-auto bg-[#0C1425] ${dragScrollClass}`} {...dragScrollHandlers}>
+            <div className={`hidden lg:flex flex-col p-4 border-r border-slate-200 overflow-y-auto bg-white ${dragScrollClass}`} {...dragScrollHandlers}>
               <LeftPanel />
             </div>
 
@@ -1278,12 +1278,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                           </span>
                         ); })()}
                         {currentQuestion.question_type && (
-                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-white/[0.03] border-white/10 text-slate-400 uppercase tracking-widest">
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-slate-50 border-slate-200 text-slate-400 uppercase tracking-widest">
                             {currentQuestion.question_type}
                           </span>
                         )}
                         {currentQuestion.source_section && (
-                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-blue-600/10 border-blue-500/20 text-blue-300">
+                          <span className="px-2.5 py-1 text-[10px] font-bold rounded-lg border bg-blue-50 border-blue-200 text-blue-600">
                             {currentQuestion.source_section}
                           </span>
                         )}
@@ -1295,9 +1295,9 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                     ) : (
                       /* Skeleton badges */
                       <div className="flex gap-2">
-                        <div className="h-6 w-16 bg-white/[0.05] rounded-lg motion-safe:animate-pulse" />
-                        <div className="h-6 w-20 bg-white/[0.05] rounded-lg motion-safe:animate-pulse" />
-                        <div className="h-6 w-24 bg-white/[0.05] rounded-lg motion-safe:animate-pulse" />
+                        <div className="h-6 w-16 bg-slate-100 rounded-lg motion-safe:animate-pulse" />
+                        <div className="h-6 w-20 bg-slate-100 rounded-lg motion-safe:animate-pulse" />
+                        <div className="h-6 w-24 bg-slate-100 rounded-lg motion-safe:animate-pulse" />
                       </div>
                     )}
                   </div>
@@ -1307,14 +1307,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black border shrink-0 transition-all duration-300 ${
                         isTtsSpeaking
-                          ? 'bg-blue-600/30 border-blue-500/50 text-blue-200 shadow-md shadow-blue-500/15'
-                          : 'bg-blue-600/[0.18] border-blue-500/30 text-blue-300'
+                          ? 'bg-blue-100 border-blue-400 text-blue-700 shadow-md shadow-blue-100'
+                          : 'bg-blue-50 border-blue-300 text-blue-600'
                       }`}>
                         {getInitials(currentQuestion.panelist.name)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="font-black text-sm text-white leading-none">{currentQuestion.panelist.name}</p>
+                          <p className="font-black text-sm text-slate-800 leading-none">{currentQuestion.panelist.name}</p>
                           {isTtsSpeaking && (
                             <div className="flex gap-[3px] items-end">
                               <div className="w-[3px] h-2.5 bg-blue-400 rounded-full motion-safe:animate-bounce" />
@@ -1323,16 +1323,16 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                             </div>
                           )}
                         </div>
-                        <p className="text-[10px] text-blue-300/80 font-semibold uppercase tracking-wider mt-0.5">{currentQuestion.panelist.role}</p>
+                        <p className="text-[10px] text-blue-500 font-semibold uppercase tracking-wider mt-0.5">{currentQuestion.panelist.role}</p>
                       </div>
                     </div>
                   ) : (
                     /* Skeleton examiner row */
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-white/[0.05] shrink-0 motion-safe:animate-pulse" />
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 shrink-0 motion-safe:animate-pulse" />
                       <div className="flex flex-col gap-1.5">
-                        <div className="h-3.5 w-32 bg-white/[0.05] rounded motion-safe:animate-pulse" />
-                        <div className="h-2.5 w-20 bg-white/[0.04] rounded motion-safe:animate-pulse" />
+                        <div className="h-3.5 w-32 bg-slate-100 rounded motion-safe:animate-pulse" />
+                        <div className="h-2.5 w-20 bg-slate-100 rounded motion-safe:animate-pulse" />
                       </div>
                     </div>
                   )}
@@ -1341,23 +1341,23 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   {activeThreadExchanges.length > 0 && (
                     <div className="space-y-2">
                       {activeThreadExchanges.map((ex, i) => (
-                        <div key={i} className="rounded-xl overflow-hidden border border-white/[0.06] bg-white/[0.02]">
+                        <div key={i} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
                           {/* Panelist Q */}
-                          <div className="flex items-start gap-2.5 px-4 py-3 border-b border-white/[0.05]">
-                            <div className="w-5 h-5 rounded-md bg-blue-600/20 border border-blue-500/25 flex items-center justify-center text-[9px] font-black text-blue-300 shrink-0 mt-0.5">
+                          <div className="flex items-start gap-2.5 px-4 py-3 border-b border-slate-100">
+                            <div className="w-5 h-5 rounded-md bg-blue-100 border border-blue-200 flex items-center justify-center text-[9px] font-black text-blue-600 shrink-0 mt-0.5">
                               {ex.isFollowUp ? '↩' : 'Q'}
                             </div>
                             <p className="text-xs text-slate-400 leading-relaxed flex-1">{ex.question}</p>
                           </div>
                           {/* Student A */}
                           <div className="flex items-start gap-2.5 px-4 py-3">
-                            <div className="w-5 h-5 rounded-md bg-emerald-600/20 border border-emerald-500/25 flex items-center justify-center text-[9px] font-black text-emerald-300 shrink-0 mt-0.5">
+                            <div className="w-5 h-5 rounded-md bg-emerald-100 border border-emerald-200 flex items-center justify-center text-[9px] font-black text-emerald-600 shrink-0 mt-0.5">
                               A
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs text-slate-300 leading-relaxed">{ex.answer.length > 180 ? ex.answer.slice(0, 180) + '…' : ex.answer}</p>
+                              <p className="text-xs text-slate-600 leading-relaxed">{ex.answer.length > 180 ? ex.answer.slice(0, 180) + '…' : ex.answer}</p>
                               <div className="flex items-center gap-2 mt-1.5">
-                                <span className={`text-[9px] font-black uppercase tracking-widest ${ex.satisfactionScore >= 75 ? 'text-emerald-400' : ex.satisfactionScore >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                                <span className={`text-[9px] font-black uppercase tracking-widest ${ex.satisfactionScore >= 75 ? 'text-emerald-600' : ex.satisfactionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
                                   {ex.satisfactionScore}% satisfied
                                 </span>
                                 {ex.gaps.length > 0 && (
@@ -1374,11 +1374,11 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   {/* ③b Panelist remark bubble — shown after each exchange */}
                   {panelistRemark && !isThreadEvaluating && activeThreadExchanges.length > 0 && currentQuestion?.question_type === 'Follow-up' && (
                     <div className="flex items-start gap-3 animate-question-in">
-                      <div className="w-7 h-7 rounded-lg bg-blue-600/[0.18] border border-blue-500/30 flex items-center justify-center text-[9px] font-black text-blue-300 shrink-0 mt-0.5">
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-300 flex items-center justify-center text-[9px] font-black text-blue-600 shrink-0 mt-0.5">
                         {currentQuestion.panelist ? getInitials(currentQuestion.panelist.name) : '?'}
                       </div>
-                      <div className="flex-1 bg-blue-600/[0.08] border border-blue-500/15 rounded-xl px-4 py-3">
-                        <p className="text-xs text-blue-200 leading-relaxed">&ldquo;{panelistRemark}&rdquo;</p>
+                      <div className="flex-1 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                        <p className="text-xs text-blue-700 leading-relaxed">&ldquo;{panelistRemark}&rdquo;</p>
                       </div>
                     </div>
                   )}
@@ -1386,10 +1386,10 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   {/* ③c Panelist thinking indicator — shown while evaluating satisfaction */}
                   {isThreadEvaluating && (
                     <div className="flex items-center gap-3 animate-question-in">
-                      <div className="w-7 h-7 rounded-lg bg-blue-600/[0.18] border border-blue-500/30 flex items-center justify-center shrink-0">
-                        <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-300 flex items-center justify-center shrink-0">
+                        <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
                       </div>
-                      <div className="flex items-center gap-1.5 bg-[#0F1A2E] border border-white/[0.07] rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-4 py-3">
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce" />
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce [animation-delay:150ms]" />
                         <div className="w-1.5 h-1.5 rounded-full bg-blue-400 motion-safe:animate-bounce [animation-delay:300ms]" />
@@ -1403,34 +1403,34 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   <div key={isGeneratingQuestion ? 'skeleton' : (currentQuestion?.question ?? 'empty')}>
                     {isGeneratingQuestion || !currentQuestion ? (
                       /* Generating skeleton */
-                      <div className="bg-[#0F1A2E] border border-white/[0.07] rounded-2xl p-7 space-y-4">
+                      <div className="bg-white border border-slate-200 rounded-2xl p-7 space-y-4">
                         <div className="flex gap-1.5 items-end mb-2">
-                          <div className="w-1.5 h-4 bg-blue-500/40 rounded-full motion-safe:animate-bounce" />
-                          <div className="w-1.5 h-6 bg-blue-500/40 rounded-full motion-safe:animate-bounce [animation-delay:100ms]" />
-                          <div className="w-1.5 h-3 bg-blue-500/40 rounded-full motion-safe:animate-bounce [animation-delay:200ms]" />
-                          <div className="w-1.5 h-5 bg-blue-500/40 rounded-full motion-safe:animate-bounce [animation-delay:300ms]" />
-                          <div className="w-1.5 h-2.5 bg-blue-500/40 rounded-full motion-safe:animate-bounce [animation-delay:400ms]" />
+                          <div className="w-1.5 h-4 bg-blue-100 rounded-full motion-safe:animate-bounce" />
+                          <div className="w-1.5 h-6 bg-blue-100 rounded-full motion-safe:animate-bounce [animation-delay:100ms]" />
+                          <div className="w-1.5 h-3 bg-blue-100 rounded-full motion-safe:animate-bounce [animation-delay:200ms]" />
+                          <div className="w-1.5 h-5 bg-blue-100 rounded-full motion-safe:animate-bounce [animation-delay:300ms]" />
+                          <div className="w-1.5 h-2.5 bg-blue-100 rounded-full motion-safe:animate-bounce [animation-delay:400ms]" />
                         </div>
                         <div className="space-y-3">
-                          <div className="h-5 bg-white/[0.06] rounded-lg motion-safe:animate-pulse w-full" />
-                          <div className="h-5 bg-white/[0.06] rounded-lg motion-safe:animate-pulse w-[92%]" />
-                          <div className="h-5 bg-white/[0.06] rounded-lg motion-safe:animate-pulse w-[78%]" />
+                          <div className="h-5 bg-slate-100 rounded-lg motion-safe:animate-pulse w-full" />
+                          <div className="h-5 bg-slate-100 rounded-lg motion-safe:animate-pulse w-[92%]" />
+                          <div className="h-5 bg-slate-100 rounded-lg motion-safe:animate-pulse w-[78%]" />
                         </div>
                         <p className="text-slate-500 text-xs text-center pt-1">Panel is formulating your question…</p>
                       </div>
                     ) : (
                       /* Live question card — entrance animation plays on each remount */
-                      <div className={`animate-question-in bg-[#0F1A2E] border rounded-2xl p-7 transition-[border-color,box-shadow] duration-300 ${
+                      <div className={`animate-question-in bg-white border rounded-2xl p-7 transition-[border-color,box-shadow] duration-300 ${
                         isTtsSpeaking
-                          ? 'border-blue-500/35 shadow-lg shadow-blue-950/40'
-                          : 'border-white/[0.08] shadow-sm shadow-black/20'
+                          ? 'border-blue-300 shadow-lg shadow-blue-200'
+                          : 'border-slate-200 shadow-sm shadow-slate-200/50'
                       }`}>
                         {/* Question hero text */}
-                        <p className="font-medium text-[1.5rem] lg:text-[1.625rem] text-slate-100 leading-[1.6] max-w-[65ch] tracking-tight">
+                        <p className="font-medium text-[1.5rem] lg:text-[1.625rem] text-slate-800 leading-[1.6] max-w-[65ch] tracking-tight">
                           {currentQuestion.question}
                         </p>
                         {currentQuestion.source_excerpt && (
-                          <p className="mt-5 text-[11px] text-slate-500 border-t border-white/[0.06] pt-4 leading-relaxed">
+                          <p className="mt-5 text-[11px] text-slate-500 border-t border-slate-200 pt-4 leading-relaxed">
                             Ref: {currentQuestion.source_excerpt}
                           </p>
                         )}
@@ -1440,10 +1440,10 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                   {/* ④ Voice error */}
                   {isVoiceEnabled && voiceError && (
-                    <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
-                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
-                      <p className="text-xs text-red-300 leading-relaxed flex-1">{voiceError}</p>
-                      <button type="button" title="Dismiss" aria-label="Dismiss error" onClick={() => setVoiceError(null)} className="text-red-500 hover:text-red-300 transition-colors">
+                    <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                      <p className="text-xs text-red-600 leading-relaxed flex-1">{voiceError}</p>
+                      <button type="button" title="Dismiss" aria-label="Dismiss error" onClick={() => setVoiceError(null)} className="text-red-500 hover:text-red-600 transition-colors">
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1451,28 +1451,28 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                   {/* ④ Voice recording in-progress */}
                   {isVoiceEnabled && isListening && (
-                    <div className="bg-[#0F1A2E] border border-red-500/20 rounded-2xl p-5 space-y-3">
+                    <div className="bg-white border border-red-200 rounded-2xl p-5 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-red-400 font-black text-xs">
+                        <div className="flex items-center gap-2 text-red-600 font-black text-xs">
                           <div className="w-2 h-2 rounded-full bg-red-500 motion-safe:animate-pulse" />
                           Recording your answer…
                         </div>
                         <button type="button" onClick={handleStopRecording}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-red-500/20 transition-all">
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 text-red-600 text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-red-100 transition-all">
                           <Square className="w-3 h-3" /> Done
                         </button>
                       </div>
                       {liveTranscript
-                        ? <p className="text-slate-300 text-sm leading-relaxed">&ldquo;{liveTranscript}&rdquo;</p>
+                        ? <p className="text-slate-600 text-sm leading-relaxed">&ldquo;{liveTranscript}&rdquo;</p>
                         : <p className="text-slate-500 text-sm">Speak clearly into your microphone…</p>
                       }
                       {silencePrompt && (
-                        <div className="flex items-center gap-3 pt-2 border-t border-white/[0.07]">
+                        <div className="flex items-center gap-3 pt-2 border-t border-slate-200">
                           <p className="text-slate-400 text-xs font-bold">Done?</p>
                           <button type="button" onClick={handleStopRecording}
-                            className="px-2.5 py-1 bg-blue-600/20 border border-blue-500/30 text-blue-300 text-[10px] font-black rounded-lg uppercase tracking-widest">Yes, Submit</button>
+                            className="px-2.5 py-1 bg-blue-100 border border-blue-300 text-blue-600 text-[10px] font-black rounded-lg uppercase tracking-widest">Yes, Submit</button>
                           <button type="button" onClick={() => setSilencePrompt(false)}
-                            className="px-2.5 py-1 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black rounded-lg uppercase tracking-widest">Continue</button>
+                            className="px-2.5 py-1 bg-slate-100 border border-slate-200 text-slate-400 text-[10px] font-black rounded-lg uppercase tracking-widest">Continue</button>
                         </div>
                       )}
                     </div>
@@ -1480,18 +1480,18 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                   {/* ④ Transcript review */}
                   {isVoiceEnabled && isReviewingTranscript && !isListening && (
-                    <div className="bg-[#0F1A2E] border border-blue-500/20 rounded-2xl p-5 space-y-4">
+                    <div className="bg-white border border-blue-200 rounded-2xl p-5 space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-[10px] font-black text-blue-300 uppercase tracking-widest flex items-center gap-1.5">
+                        <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1.5">
                           <Edit3 className="w-3 h-3" /> Review & Edit Transcript
                         </h3>
                         <button type="button" onClick={() => { setIsReviewingTranscript(false); handleStartRecording(); }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black rounded-lg uppercase tracking-widest hover:bg-white/10">
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-400 text-[10px] font-black rounded-lg uppercase tracking-widest hover:bg-slate-200">
                           <Mic className="w-3 h-3" /> Re-record
                         </button>
                       </div>
                       <textarea aria-label="Transcript"
-                        className="w-full min-h-[100px] bg-[#070C16] border border-white/10 rounded-xl p-4 text-slate-100 resize-none outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50 text-sm leading-relaxed transition-all duration-200"
+                        className="w-full min-h-[100px] bg-slate-50 border border-slate-200 rounded-xl p-4 text-slate-800 resize-none outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 text-sm leading-relaxed transition-all duration-200"
                         value={liveTranscript} onChange={e => setLiveTranscript(e.target.value)} />
                       <button type="button" onClick={handleSubmitVoice} disabled={!liveTranscript.trim()}
                         className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-white font-black rounded-xl uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all">
@@ -1509,14 +1509,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                         autoFocus
                         maxLength={3000}
                         rows={7}
-                        className="w-full bg-[#0F1A2E] border border-white/[0.08] rounded-2xl px-5 py-4 focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/50 outline-none text-slate-100 placeholder:text-slate-600/80 resize-none overflow-hidden transition-all duration-200 text-base leading-relaxed shadow-sm shadow-black/20"
+                        className="w-full bg-white border border-slate-200 rounded-2xl px-5 py-4 focus:ring-2 focus:ring-blue-200 focus:border-blue-400 outline-none text-slate-800 placeholder:text-slate-400 resize-none overflow-hidden transition-all duration-200 text-base leading-relaxed shadow-sm shadow-slate-200/50"
                         placeholder={followUpCount > 0 ? "Address the panelist's follow-up question…" : 'Articulate your response based on your research findings…'}
                         value={response}
                         onChange={e => setResponse(e.target.value)}
                       />
                       {/* Character counter — floats inside bottom-right of textarea */}
                       <span className={`absolute bottom-3.5 right-4 text-[10px] font-bold tabular-nums pointer-events-none transition-colors duration-200 ${
-                        response.length >= 2900 ? 'text-red-400' : response.length >= 2700 ? 'text-amber-400' : 'text-slate-600'
+                        response.length >= 2900 ? 'text-red-600' : response.length >= 2700 ? 'text-amber-600' : 'text-slate-600'
                       }`}>
                         {response.length}/3000
                       </span>
@@ -1527,7 +1527,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   {!isThreadEvaluating && (
                     <div className="flex items-center justify-end gap-3">
                       <button type="button" onClick={handleSkip}
-                        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-[10px] font-black uppercase tracking-widest transition-colors duration-150 mr-auto">
+                        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-600 text-[10px] font-black uppercase tracking-widest transition-colors duration-150 mr-auto">
                         <FastForward className="w-3 h-3" /> Skip
                       </button>
                       {isSTTSupported() && (
@@ -1535,14 +1535,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                           title={isListening ? 'Stop recording' : 'Voice input'}
                           className={`p-2.5 rounded-xl border transition-all duration-200 ${
                             isListening
-                              ? 'bg-red-500/15 border-red-500/30 text-red-400 motion-safe:animate-pulse'
-                              : 'bg-white/[0.04] border-white/10 text-slate-400 hover:bg-white/[0.08] hover:text-white hover:border-white/20'
+                              ? 'bg-red-100 border-red-300 text-red-600 motion-safe:animate-pulse'
+                              : 'bg-slate-100 border-slate-200 text-slate-500 hover:bg-slate-200 hover:text-slate-700 hover:border-slate-300'
                           }`}>
                           {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                         </button>
                       )}
                       <button type="button" disabled={!response.trim() || !currentQuestion || isGeneratingQuestion} onClick={() => handleSubmit()}
-                        className="flex items-center gap-2 px-7 py-2.5 bg-blue-600 hover:bg-blue-500 hover:-translate-y-px active:translate-y-0 disabled:opacity-25 disabled:cursor-not-allowed disabled:translate-y-0 text-white font-black rounded-xl transition-all duration-150 text-xs uppercase tracking-widest shadow-md shadow-blue-950/50 hover:shadow-lg hover:shadow-blue-950/60">
+                        className="flex items-center gap-2 px-7 py-2.5 bg-blue-600 hover:bg-blue-500 hover:-translate-y-px active:translate-y-0 disabled:opacity-25 disabled:cursor-not-allowed disabled:translate-y-0 text-white font-black rounded-xl transition-all duration-150 text-xs uppercase tracking-widest shadow-md shadow-blue-200 hover:shadow-lg hover:shadow-blue-200">
                         {followUpCount > 0 ? 'Respond' : 'Submit'} <Send className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1550,15 +1550,15 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                   {/* Mobile coverage chips (hidden on desktop where right panel shows) */}
                   {totalSections > 0 && (
-                    <div className="lg:hidden flex flex-wrap gap-2 pt-4 border-t border-white/[0.06]">
+                    <div className="lg:hidden flex flex-wrap gap-2 pt-4 border-t border-slate-200">
                       {Object.values(coverageMap).map(s => (
                         <span key={s.section}
                           className={`flex items-center gap-1 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest rounded-full border transition-all ${
                             s.covered
-                              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                               : s.section === targetSection
-                              ? 'bg-blue-500/10 border-blue-500/25 text-blue-300'
-                              : 'bg-white/[0.03] border-white/10 text-slate-500'
+                              ? 'bg-blue-50 border-blue-200 text-blue-600'
+                              : 'bg-slate-50 border-slate-200 text-slate-500'
                           }`}>
                           {s.covered
                             ? <CheckCircle2 className="w-2.5 h-2.5 shrink-0" />
@@ -1577,7 +1577,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             </div>
 
             {/* Right sidebar */}
-            <div className={`hidden lg:flex flex-col p-4 border-l border-white/[0.07] overflow-y-auto bg-[#0C1425] ${dragScrollClass}`} {...dragScrollHandlers}>
+            <div className={`hidden lg:flex flex-col p-4 border-l border-slate-200 overflow-y-auto bg-white ${dragScrollClass}`} {...dragScrollHandlers}>
               <RightPanel />
             </div>
           </div>
@@ -1587,12 +1587,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
         {uiState === 'evaluating' && (
           <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden">
             <ShaderBackground />
-            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-transparent via-[#070C16]/60 to-[#070C16]/90 pointer-events-none" />
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-slate-50/50 via-slate-50/80 to-slate-50/95 pointer-events-none" />
             <div className="relative z-10 text-center max-w-sm">
               <div className="relative w-20 h-20 mx-auto mb-6">
-                <div className="absolute inset-0 border-2 border-blue-500/20 rounded-full motion-safe:animate-ping" />
-                <div className="w-20 h-20 bg-blue-600/20 border border-blue-500/25 rounded-2xl flex items-center justify-center">
-                  <Sparkles className="w-9 h-9 text-blue-400" />
+                <div className="absolute inset-0 border-2 border-blue-200 rounded-full motion-safe:animate-ping" />
+                <div className="w-20 h-20 bg-blue-100 border border-blue-200 rounded-2xl flex items-center justify-center">
+                  <Sparkles className="w-9 h-9 text-blue-600" />
                 </div>
               </div>
               <h2 className="text-xl font-black uppercase tracking-tight mb-2">Evaluating Answer</h2>
@@ -1604,9 +1604,9 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   { label: 'Clarity',      color: 'bg-blue-400' },
                   { label: 'Confidence',   color: 'bg-cyan-400' },
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-white/[0.06] border border-white/[0.10] rounded-xl backdrop-blur-sm">
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl backdrop-blur-sm">
                     <div className={`w-2 h-2 rounded-full ${item.color} motion-safe:animate-pulse ${['', '[animation-delay:150ms]', '[animation-delay:300ms]', '[animation-delay:450ms]'][i] ?? ''}`} />
-                    <span className="text-xs font-bold text-slate-300">{item.label}</span>
+                    <span className="text-xs font-bold text-slate-600">{item.label}</span>
                   </div>
                 ))}
               </div>
@@ -1621,14 +1621,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
               {!currentEval && (
                 <div className="max-w-lg mx-auto text-center py-16">
-                  <div className="w-14 h-14 bg-amber-500/15 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                    <AlertCircle className="w-7 h-7 text-amber-400" />
+                  <div className="w-14 h-14 bg-amber-100 border border-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <AlertCircle className="w-7 h-7 text-amber-600" />
                   </div>
                   <h2 className="text-xl font-black uppercase tracking-tight mb-2">Evaluation Unavailable</h2>
                   <p className="text-slate-400 text-sm mb-2">{evalError || 'The AI evaluator did not return a result. Your response was recorded.'}</p>
                   <p className="text-slate-500 text-xs mb-8">This response will be scored as 0. You can continue to the next question.</p>
                   <button type="button" onClick={handleNext}
-                    className="inline-flex items-center gap-2 px-8 py-3.5 bg-white text-slate-900 font-black rounded-2xl hover:bg-blue-50 transition-all text-xs uppercase tracking-widest">
+                    className="inline-flex items-center gap-2 px-8 py-3.5 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-500 transition-all text-xs uppercase tracking-widest">
                     Continue <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -1640,16 +1640,16 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                   <div className="max-w-2xl mx-auto space-y-6">
                     {/* Thread summary — shown only when follow-ups occurred */}
                     {activeThreadExchanges.length > 1 && (
-                      <div className="p-5 bg-[#0F1A2E] border border-white/[0.07] rounded-2xl space-y-3">
+                      <div className="p-5 bg-white border border-slate-200 rounded-2xl space-y-3">
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Panel Exchange</p>
                           <div className="flex items-center gap-1.5">
                             <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${
                               threadVerdict === 'satisfied'
-                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-600'
                                 : threadVerdict === 'capped'
-                                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                                : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+                                ? 'bg-amber-50 border-amber-200 text-amber-600'
+                                : 'bg-slate-100 border-slate-300 text-slate-400'
                             }`}>
                               {threadVerdict === 'satisfied' ? 'Satisfied' : threadVerdict === 'capped' ? 'Follow-up cap reached' : 'Skipped'}
                             </span>
@@ -1659,14 +1659,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                         <div className="space-y-2">
                           {activeThreadExchanges.map((ex, i) => (
                             <div key={i} className="flex items-start gap-3">
-                              <span className={`text-[9px] font-black uppercase shrink-0 mt-0.5 w-12 text-right ${ex.isFollowUp ? 'text-blue-400' : 'text-slate-500'}`}>
+                              <span className={`text-[9px] font-black uppercase shrink-0 mt-0.5 w-12 text-right ${ex.isFollowUp ? 'text-blue-600' : 'text-slate-500'}`}>
                                 {ex.isFollowUp ? 'Follow' : 'Root'}
                               </span>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] text-slate-500 leading-relaxed">{ex.question.length > 90 ? ex.question.slice(0, 90) + '…' : ex.question}</p>
-                                <p className="text-xs text-slate-300 leading-relaxed mt-0.5">{ex.answer.length > 120 ? ex.answer.slice(0, 120) + '…' : ex.answer}</p>
+                                <p className="text-xs text-slate-600 leading-relaxed mt-0.5">{ex.answer.length > 120 ? ex.answer.slice(0, 120) + '…' : ex.answer}</p>
                               </div>
-                              <span className={`text-[9px] font-black shrink-0 tabular-nums mt-0.5 ${ex.satisfactionScore >= 75 ? 'text-emerald-400' : ex.satisfactionScore >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                              <span className={`text-[9px] font-black shrink-0 tabular-nums mt-0.5 ${ex.satisfactionScore >= 75 ? 'text-emerald-600' : ex.satisfactionScore >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
                                 {ex.satisfactionScore}%
                               </span>
                             </div>
@@ -1676,7 +1676,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                     )}
 
                     {/* Score header */}
-                    <div className="flex items-center justify-between gap-4 p-6 bg-[#0F1A2E] border border-white/[0.07] rounded-2xl shadow-sm">
+                    <div className="flex items-center justify-between gap-4 p-6 bg-white border border-slate-200 rounded-2xl shadow-sm">
                       <div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Your Score</p>
                         <div className="flex items-baseline gap-1.5">
@@ -1691,7 +1691,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                     </div>
 
                     {/* Category breakdown */}
-                    <div className="p-6 bg-[#0F1A2E] border border-white/[0.07] rounded-2xl">
+                    <div className="p-6 bg-white border border-slate-200 rounded-2xl">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">Category Breakdown</p>
                       <div className="grid grid-cols-2 gap-5">
                         {[
@@ -1705,7 +1705,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat.label}</span>
                               <span className={`text-sm font-black ${scoreColor(cat.val)}`}>{cat.val}</span>
                             </div>
-                            <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden mb-2">
+                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden mb-2">
                               <ProgressFill pct={cat.val} className={`h-full rounded-full transition-all duration-700 ${scoreBg(cat.val)}`} />
                             </div>
                             <p className="text-[10px] text-slate-400 leading-relaxed line-clamp-2">{cat.desc}</p>
@@ -1716,25 +1716,25 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                     {/* Strengths & Improvements */}
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-5 bg-emerald-500/[0.05] border border-emerald-500/15 rounded-2xl">
-                        <h4 className="text-emerald-400 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                      <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                        <h4 className="text-emerald-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
                           <CheckCircle2 className="w-3.5 h-3.5" />Strengths
                         </h4>
                         <ul className="space-y-2">
                           {currentEval.strengths.map((s, i) => (
-                            <li key={i} className="text-xs text-slate-300 leading-relaxed flex gap-2">
+                            <li key={i} className="text-xs text-slate-600 leading-relaxed flex gap-2">
                               <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 shrink-0" />{s}
                             </li>
                           ))}
                         </ul>
                       </div>
-                      <div className="p-5 bg-amber-500/[0.05] border border-amber-500/15 rounded-2xl">
-                        <h4 className="text-amber-400 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                      <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <h4 className="text-amber-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
                           <AlertCircle className="w-3.5 h-3.5" />Improvements
                         </h4>
                         <ul className="space-y-2">
                           {currentEval.improvements.map((s, i) => (
-                            <li key={i} className="text-xs text-slate-300 leading-relaxed flex gap-2">
+                            <li key={i} className="text-xs text-slate-600 leading-relaxed flex gap-2">
                               <span className="w-1 h-1 rounded-full bg-amber-500 mt-1.5 shrink-0" />{s}
                             </li>
                           ))}
@@ -1744,17 +1744,17 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                     {/* Suggested answer */}
                     {currentEval.suggestedAnswer && (
-                      <div className="p-5 bg-blue-600/[0.07] border border-blue-500/15 rounded-2xl">
-                        <h4 className="text-blue-300 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                      <div className="p-5 bg-blue-50 border border-blue-200 rounded-2xl">
+                        <h4 className="text-blue-600 font-black text-[10px] uppercase tracking-widest flex items-center gap-1.5 mb-3">
                           <Sparkles className="w-3.5 h-3.5" />Suggested Answer
                         </h4>
-                        <p className="text-slate-300 text-sm leading-relaxed">&ldquo;{currentEval.suggestedAnswer}&rdquo;</p>
+                        <p className="text-slate-600 text-sm leading-relaxed">&ldquo;{currentEval.suggestedAnswer}&rdquo;</p>
                       </div>
                     )}
 
                     {/* Voice reaction */}
                     {isVoiceEnabled && isPlayingReaction && (
-                      <div className="flex items-center gap-2 text-blue-400 text-xs font-bold py-2 justify-center">
+                      <div className="flex items-center gap-2 text-blue-600 text-xs font-bold py-2 justify-center">
                         <div className="flex gap-0.5 items-end">
                           <div className="w-0.5 h-2.5 bg-blue-400 rounded-full motion-safe:animate-pulse" />
                           <div className="w-0.5 h-3.5 bg-blue-400 rounded-full motion-safe:animate-pulse [animation-delay:150ms]" />
@@ -1766,7 +1766,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
                     {/* Next button */}
                     <button type="button" onClick={handleNext} disabled={isVoiceEnabled && isPlayingReaction}
-                      className="w-full py-4 bg-blue-600 hover:bg-blue-500 hover:-translate-y-px disabled:opacity-40 disabled:translate-y-0 text-white font-black rounded-2xl transition-all duration-150 flex items-center justify-center gap-2 uppercase tracking-widest text-xs shadow-lg shadow-blue-900/30 hover:shadow-blue-900/50">
+                      className="w-full py-4 bg-blue-600 hover:bg-blue-500 hover:-translate-y-px disabled:opacity-40 disabled:translate-y-0 text-white font-black rounded-2xl transition-all duration-150 flex items-center justify-center gap-2 uppercase tracking-widest text-xs shadow-lg shadow-blue-200 hover:shadow-blue-200">
                       {coveredCount >= totalSections && totalSections > 0 ? 'Finalize Defense' : 'Next Question'}
                       <ChevronRight className="w-4 h-4" />
                     </button>
@@ -1776,7 +1776,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             </div>
 
             {/* Feedback right panel */}
-            <div className={`hidden lg:flex flex-col p-4 border-l border-white/[0.07] overflow-y-auto bg-[#0C1425] ${dragScrollClass}`} {...dragScrollHandlers}>
+            <div className={`hidden lg:flex flex-col p-4 border-l border-slate-200 overflow-y-auto bg-white ${dragScrollClass}`} {...dragScrollHandlers}>
               <RightPanel />
             </div>
           </div>
