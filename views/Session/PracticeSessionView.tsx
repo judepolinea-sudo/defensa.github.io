@@ -921,7 +921,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       <aside className={`flex flex-col gap-3 h-full overflow-y-auto ${dragScrollClass}`} {...dragScrollHandlers}>
         {/* Active panelist — hero card */}
         {activePanelist ? (
-          <div className="p-5 rounded-2xl border bg-gradient-to-b from-blue-600/20 to-[#0C1425] border-blue-500/35 ring-1 ring-blue-500/20 shadow-xl shadow-blue-900/20 flex flex-col items-center text-center gap-3">
+          <div className="p-5 rounded-2xl border bg-[#0F1A2E] border-blue-500/25 shadow-lg shadow-black/30 flex flex-col items-center text-center gap-3">
             <div className="relative">
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-black border-2 transition-all duration-300 ${
                 isTtsSpeaking
@@ -1219,32 +1219,24 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
         {/* ── GENERATING ─────────────────────────────────────────── */}
         {uiState === 'generating' && (
-          <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden">
+          <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden bg-[#070C16]">
             {/* Animated WebGL plasma background */}
             <ShaderBackground />
 
             {/* Dark vignette so the center text stays readable */}
-            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-slate-50/50 via-slate-50/80 to-slate-50/95 pointer-events-none" />
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-transparent via-[#070C16]/60 to-[#070C16]/95 pointer-events-none" />
 
             {/* Content card */}
             <div className="relative z-10 text-center max-w-sm">
-              {/* Skeleton lines — shimmer over the shader */}
-              <div className="w-full space-y-2.5 mb-8 opacity-30">
-                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-3/4 mx-auto" />
-                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-full" />
-                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-5/6 mx-auto" />
-                <div className="h-3 bg-slate-200 rounded-full motion-safe:animate-pulse w-2/3 mx-auto" />
-              </div>
-
               {/* Spinner */}
-              <div className="w-14 h-14 bg-blue-100 border border-blue-300 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-200 backdrop-blur-sm">
-                <Loader2 className="w-7 h-7 text-blue-600 animate-spin" />
+              <div className="w-14 h-14 bg-blue-600/30 border border-blue-500/40 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-900/40 backdrop-blur-sm">
+                <Loader2 className="w-7 h-7 text-blue-300 animate-spin" />
               </div>
 
-              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-slate-800">
+              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-white drop-shadow">
                 Panel Preparing
               </h2>
-              <p className="text-slate-500 text-sm leading-relaxed">
+              <p className="text-slate-300 text-sm leading-relaxed drop-shadow">
                 Analyzing your research document and formulating your first question…
               </p>
             </div>
@@ -1585,28 +1577,28 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
 
         {/* ── EVALUATING ─────────────────────────────────────────── */}
         {uiState === 'evaluating' && (
-          <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden">
+          <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden bg-[#070C16]">
             <ShaderBackground />
-            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-slate-50/50 via-slate-50/80 to-slate-50/95 pointer-events-none" />
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-transparent via-[#070C16]/60 to-[#070C16]/95 pointer-events-none" />
             <div className="relative z-10 text-center max-w-sm">
               <div className="relative w-20 h-20 mx-auto mb-6">
-                <div className="absolute inset-0 border-2 border-blue-200 rounded-full motion-safe:animate-ping" />
-                <div className="w-20 h-20 bg-blue-100 border border-blue-200 rounded-2xl flex items-center justify-center">
-                  <Sparkles className="w-9 h-9 text-blue-600" />
+                <div className="absolute inset-0 border-2 border-blue-500/20 rounded-full motion-safe:animate-ping" />
+                <div className="w-20 h-20 bg-blue-600/20 border border-blue-500/25 rounded-2xl flex items-center justify-center">
+                  <Sparkles className="w-9 h-9 text-blue-300" />
                 </div>
               </div>
-              <h2 className="text-xl font-black uppercase tracking-tight mb-2">Evaluating Answer</h2>
-              <p className="text-slate-400 text-sm mb-8">Applying rubric weights and analyzing your response…</p>
+              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-white drop-shadow">Evaluating Answer</h2>
+              <p className="text-slate-300 text-sm mb-8 drop-shadow">Applying rubric weights and analyzing your response…</p>
               <div className="space-y-2 text-left">
                 {[
-                  { label: 'Accuracy',     color: 'bg-blue-600' },
-                  { label: 'Completeness', color: 'bg-sky-500' },
-                  { label: 'Clarity',      color: 'bg-blue-400' },
-                  { label: 'Confidence',   color: 'bg-cyan-400' },
+                  { label: 'Accuracy',     color: 'bg-blue-500' },
+                  { label: 'Completeness', color: 'bg-sky-400' },
+                  { label: 'Clarity',      color: 'bg-blue-300' },
+                  { label: 'Confidence',   color: 'bg-cyan-300' },
                 ].map((item, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl backdrop-blur-sm">
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5 bg-white/[0.06] border border-white/10 rounded-xl backdrop-blur-sm">
                     <div className={`w-2 h-2 rounded-full ${item.color} motion-safe:animate-pulse ${['', '[animation-delay:150ms]', '[animation-delay:300ms]', '[animation-delay:450ms]'][i] ?? ''}`} />
-                    <span className="text-xs font-bold text-slate-600">{item.label}</span>
+                    <span className="text-xs font-bold text-slate-200">{item.label}</span>
                   </div>
                 ))}
               </div>
