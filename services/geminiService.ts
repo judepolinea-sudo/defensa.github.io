@@ -1708,8 +1708,12 @@ Return ONLY valid JSON — no markdown, no explanation:
       satisfaction_score: 50,
       verdict: 'needs_followup',
       gaps: ['Could not evaluate at this time.'],
-      followup_question: `Could you elaborate further on your answer regarding "${rootQuestion.substring(0, 80)}..."?`,
-      panelist_remark: 'I see, but could you expand on that a bit more?',
+      followup_question: [
+        'Go deeper on that. Give a specific example from your research and explain how it supports your point.',
+        'That needs more detail. Walk the panel through your reasoning step by step.',
+        'Be more concrete. What exactly in your document backs up that answer?',
+      ][followUpCount % 3],
+      panelist_remark: 'I see, but I need you to expand on that.',
     };
   }
 };
