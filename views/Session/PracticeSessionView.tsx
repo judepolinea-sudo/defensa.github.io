@@ -831,7 +831,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     <header className="h-14 px-5 border-b border-slate-200 flex items-center justify-between bg-white/90 backdrop-blur-md sticky top-0 z-50 shrink-0">
       {/* Left: branding */}
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center font-black text-sm shadow-lg shadow-blue-200">D</div>
+        <img src="/favicon.svg" alt="Defensa" className="w-8 h-8 rounded-lg shadow-lg shadow-blue-200" />
         <div className="hidden sm:block">
           <p className="font-black text-xs uppercase tracking-widest text-slate-800 leading-none">Defensa</p>
           <p className="text-[10px] text-slate-500 font-medium truncate max-w-[200px]">{project.title}</p>

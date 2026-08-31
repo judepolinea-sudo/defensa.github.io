@@ -316,6 +316,85 @@ function getContextualFallbackQuestion(
 
 // --- LOCAL EVALUATOR (used when AI is unavailable) ---
 
+// --- ANSWER QUALITY GUARDS ---------------------------------------------------
+// Used by the offline scorers AND as a hard clamp on the AI scorers so that
+// keyboard-mashing or "I don't know" can never earn points (a small model can
+// otherwise be talked into scoring them as "partial").
+
+const NON_ANSWER_RE =
+  /^\s*(i\s+(do\s*n['’]?t|don['’]?t|do\s+not|can\s*not|can['’]?t)\s+know|no\s+idea|not\s+sure|unsure|idk|i\s+pass|pass|skip|n\s*\/?\s*a|none|nothing|no\s+comment|i\s+forgot|i\s+have\s+no\s+(idea|answer)|i\s+can['’]?t\s+answer)\b/i;
+
+export function isNonAnswer(answer: string): boolean {
+  const t = (answer || "").trim().toLowerCase().replace(/[.!?,;:\s]+$/g, "");
+  if (!t) return true;
+  if (["no", "yes", "ok", "okay", "maybe", "na", "n/a", "none", "idk"].includes(t)) return true;
+  return NON_ANSWER_RE.test(t);
+}
+
+export function looksLikeGibberish(answer: string): boolean {
+  const t = (answer || "").trim().toLowerCase();
+  if (!t) return true;
+  const tokens = t.split(/\s+/);
+  const letters = (w: string) => w.replace(/[^a-z]/g, "");
+  // a long token that reuses very few distinct letters = keyboard mashing
+  // (asdasdasd, qweqwe...); a real long word uses many distinct letters
+  if (tokens.some((w) => {
+    const l = letters(w);
+    return l.length >= 12 && new Set(l).size / l.length < 0.5;
+  })) return true;
+  // a 2–4 char pattern repeated 3+ times inside a token
+  if (tokens.some((w) => w.length >= 6 && /([a-z]{2,4})\1{2,}/.test(w))) return true;
+  // consonant run of 5+ — no real English word has this
+  if (/[bcdfghjklmnpqrstvwxz]{5,}/i.test(t)) return true;
+  // share of tokens that look like real words (has a vowel, letters only, sane length)
+  const wordish = tokens.filter(
+    (w) => /[aeiou]/.test(w) && /^[a-z'’-]+$/.test(w) && w.length <= 24,
+  ).length;
+  if (tokens.length >= 2 && wordish / tokens.length < 0.45) return true;
+  if (tokens.length === 1 && wordish === 0) return true;
+  return false;
+}
+
+// Fixed near-zero result for a non-substantive answer. Confidence is deliberately
+// low: composure is meaningless when nothing was actually said.
+function nonSubstantiveResult(kind: "gibberish" | "nonanswer" | "trivial"): RubricEvaluation {
+  const trivial = kind === "trivial";
+  const accuracy = trivial ? 8 : 3;
+  const completeness = trivial ? 8 : 3;
+  const clarity = trivial ? 18 : 5;
+  const confidence = trivial ? 22 : 8;
+  const finalScore = Math.round(accuracy * 0.35 + completeness * 0.25 + clarity * 0.2 + confidence * 0.2);
+  const accExpl =
+    kind === "nonanswer"
+      ? "The response declines to answer or states that the answer is unknown."
+      : kind === "gibberish"
+        ? "The response contains no meaningful content related to the question."
+        : "The response is too short to show any understanding of the question.";
+  return {
+    accuracy, completeness, clarity, confidence, finalScore,
+    explanations: {
+      accuracy: accExpl,
+      completeness: "The question was not addressed.",
+      clarity: "There is no substantive content to evaluate.",
+      confidence: "Not applicable. The question was not answered.",
+    },
+    feedback:
+      kind === "nonanswer"
+        ? "❌ Insufficient. You did not attempt an answer. Even a partial explanation from your research is better than declining."
+        : kind === "gibberish"
+          ? "❌ Insufficient. The response does not address the question. Engage with the specific topic being asked."
+          : "❌ Insufficient. The response is far too short. Give a full explanation with supporting evidence from your study.",
+    strengths: [],
+    improvements: [
+      "Answer the question directly using specific details from your own research.",
+      "Use the terminology, methods, and findings from your study.",
+    ],
+    suggestedAnswer:
+      "A complete answer would state the point directly and back it with a specific method, result, or piece of evidence from your research document.",
+    confidenceMetrics: { hesitationFillers: 0, vagueLanguageScore: trivial ? 20 : 80, concisenessScore: 15 },
+  };
+}
+
 function localEvaluate(
   question: string,
   answer: string,
@@ -337,36 +416,13 @@ function localEvaluate(
   ).length;
   const overlapRatio = wordCount > 0 ? meaningfulHits / wordCount : 0;
 
-  // Gibberish: very long answer with almost no semantic overlap = off-topic/random typing
-  const isGibberish = wordCount > 8 && overlapRatio < 0.06 && meaningfulHits < 3;
-  // Trivial: too short to be a real answer
-  const isTrivial = wordCount < 5;
-
-  if (isGibberish || isTrivial) {
-    const accuracy = isTrivial ? 5 : 8;
-    const completeness = isTrivial ? 5 : 10;
-    const clarity = isTrivial ? 5 : 22;
-    const strongF = (answer.match(/\b(uh|um|erm)\b/gi) || []).length;
-    const weakF = (answer.match(/\b(like|maybe|i think|i guess|perhaps|sort of|kind of|basically|i believe|not sure)\b/gi) || []).length;
-    const confidence = Math.max(28, Math.min(100, 90 - strongF * 12 - weakF * 6));
-    const finalScore = Math.round(accuracy * 0.35 + completeness * 0.25 + clarity * 0.20 + confidence * 0.20);
-    return {
-      accuracy, completeness, clarity, confidence, finalScore,
-      explanations: {
-        accuracy: isGibberish ? "Response appears off-topic or contains no meaningful content related to the question." : "Response is too brief to demonstrate knowledge.",
-        completeness: "The question was not meaningfully addressed.",
-        clarity: "Cannot evaluate clarity — no substantive content detected.",
-        confidence: `Composure score: ${confidence}/100.`,
-      },
-      feedback: isGibberish
-        ? "❌ Insufficient — The response does not address the question. Please engage with the specific topic being asked."
-        : "❌ Insufficient — Response is too short. Provide a detailed explanation with supporting evidence.",
-      strengths: [],
-      improvements: ["Address the question directly using specific details from your research.", "Use domain-specific terminology from your study."],
-      suggestedAnswer: "A complete answer would cite specific findings, methodology, or evidence from the research document.",
-      confidenceMetrics: { hesitationFillers: 0, vagueLanguageScore: 0, concisenessScore: 30 },
-    };
+  // Non-substantive answers get a fixed near-zero result — including a low
+  // confidence, because "composure" on an empty answer is not a real score.
+  if (isNonAnswer(answer)) return nonSubstantiveResult("nonanswer");
+  if (looksLikeGibberish(answer) || (wordCount > 8 && overlapRatio < 0.06 && meaningfulHits < 3)) {
+    return nonSubstantiveResult("gibberish");
   }
+  if (wordCount < 5) return nonSubstantiveResult("trivial");
 
   // === ACCURACY ===
   const matched = expectedKeywords.filter((kw) => {
@@ -421,10 +477,16 @@ function localEvaluate(
     ) || []
   ).length;
   const totalFillers = strongFillers + weakFillers;
-  const confidence = Math.max(
+  let confidence = Math.max(
     28,
     Math.min(100, 92 - strongFillers * 14 - weakFillers * 6),
   );
+  // A barely-substantive answer cannot be "confident" in any meaningful way —
+  // otherwise a short, off-topic answer with no filler words scores ~92 here
+  // and drags the whole result up.
+  const thinAnswer =
+    wordCount < 15 || (relevanceRatio < 0.12 && keywordRatio < 0.15);
+  if (thinAnswer) confidence = Math.min(confidence, 50);
 
   const finalScore = Math.round(
     accuracy * 0.35 + completeness * 0.25 + clarity * 0.2 + confidence * 0.2,
@@ -1568,6 +1630,17 @@ JUDGE OUTPUT — Return ONLY this JSON:
     const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 1100 });
     const parsed = parseAIJson(raw);
 
+    // Hard clamp: keyboard-mashing and "I don't know" can never earn points,
+    // no matter how lenient the model was.
+    if (isNonAnswer(answer) || looksLikeGibberish(answer)) {
+      return localEvaluate(
+        question,
+        answer,
+        expectedKeywords.length > 0 ? expectedKeywords : extractAbstractTerms(abstract),
+        responseTimeMs,
+      );
+    }
+
     // Enforce correct finalScore calculation regardless of what AI returned
     const recalculated = Math.round(
       (parsed.accuracy ?? 0) * 0.35 +
@@ -1601,6 +1674,46 @@ export interface SatisfactionResult {
   gaps: string[];
   followup_question: string | null;
   panelist_remark: string;
+}
+
+const SAT_THRESHOLD = 75;
+
+// Offline / parse-failure satisfaction scorer. Rejects non-substantive answers
+// outright and gives a rough, honest score to real ones.
+function localSatisfaction(rootQuestion: string, latestAnswer: string): SatisfactionResult {
+  if (looksLikeGibberish(latestAnswer) || isNonAnswer(latestAnswer)) {
+    return {
+      satisfaction_score: 6,
+      verdict: "evasive",
+      gaps: ["The answer does not address the question."],
+      followup_question:
+        "That does not answer the question. State your actual answer using specifics from your research.",
+      panelist_remark: "That is not an answer to what I asked.",
+    };
+  }
+  const words = latestAnswer.trim().split(/\s+/).filter(Boolean);
+  const qWords = rootQuestion.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
+  const lc = latestAnswer.toLowerCase();
+  const overlap = qWords.length
+    ? qWords.filter((w) => lc.includes(w)).length / qWords.length
+    : 0;
+  const hasSpecifics =
+    /\b\d/.test(latestAnswer) ||
+    /for example|such as|because|method|methodology|data|result|finding|survey|respondent|sample|analysis/i.test(latestAnswer);
+  let score = 22 + Math.min(words.length, 70) * 0.4 + overlap * 28 + (hasSpecifics ? 10 : 0);
+  score = Math.round(Math.max(12, Math.min(82, score)));
+  const satisfied = score >= SAT_THRESHOLD;
+  return {
+    satisfaction_score: score,
+    verdict: satisfied ? "satisfied" : "needs_followup",
+    gaps: satisfied ? [] : ["The answer needs more specifics grounded in your research."],
+    followup_question: satisfied
+      ? null
+      : "Go further. Support that with a concrete example or finding from your study.",
+    panelist_remark: satisfied
+      ? "Alright, that addresses it."
+      : "I need more detail from you on that.",
+  };
 }
 
 export const evaluateSatisfaction = async (
@@ -1684,6 +1797,19 @@ Return ONLY valid JSON — no markdown, no explanation:
     // Clamp score
     parsed.satisfaction_score = Math.min(100, Math.max(0, Math.round(parsed.satisfaction_score ?? 50)));
 
+    // Hard floor: a small model can be talked into scoring key-mashing or
+    // "I don't know" as "partial". It never is.
+    if (looksLikeGibberish(latestAnswer) || isNonAnswer(latestAnswer)) {
+      parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 10);
+      if (!forceClose) {
+        parsed.verdict = 'evasive';
+        if (!parsed.followup_question) {
+          parsed.followup_question =
+            'That does not answer the question. State your actual answer using specifics from your research.';
+        }
+      }
+    }
+
     // Ensure verdict matches score if AI was inconsistent
     if (!forceClose && parsed.satisfaction_score >= 75 && parsed.verdict !== 'satisfied') {
       parsed.verdict = 'satisfied';
@@ -1695,25 +1821,15 @@ Return ONLY valid JSON — no markdown, no explanation:
 
     return parsed;
   } catch {
+    const local = localSatisfaction(rootQuestion, latestAnswer);
     if (forceClose) {
       return {
-        satisfaction_score: 55,
+        ...local,
         verdict: 'satisfied',
-        gaps: [],
         followup_question: null,
         panelist_remark: "Let's move on from this question.",
       };
     }
-    return {
-      satisfaction_score: 50,
-      verdict: 'needs_followup',
-      gaps: ['Could not evaluate at this time.'],
-      followup_question: [
-        'Go deeper on that. Give a specific example from your research and explain how it supports your point.',
-        'That needs more detail. Walk the panel through your reasoning step by step.',
-        'Be more concrete. What exactly in your document backs up that answer?',
-      ][followUpCount % 3],
-      panelist_remark: 'I see, but I need you to expand on that.',
-    };
+    return local;
   }
 };
