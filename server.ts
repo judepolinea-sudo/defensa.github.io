@@ -9,6 +9,7 @@ import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { supabase, rowToProfile, profileToRow, logAudit } from "./lib/supabaseAdmin.ts";
+import { sendGoogleWelcomeEmail } from "./lib/email.ts";
 import {
   saveActiveSession,
   getActiveSession,
@@ -247,6 +248,12 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   await logAudit(decoded.uid, "GOOGLE_AUTO_SIGNUP", "users", decoded.uid, {
     email: decoded.email,
   });
+
+  // Fire-and-forget welcome email (no-op unless SMTP is configured).
+  sendGoogleWelcomeEmail({
+    to: decoded.email ?? "",
+    fullName: decoded.name || decoded.email || "Student",
+  }).catch(() => {});
 
   return { decoded, profile: rowToProfile(created) };
 }

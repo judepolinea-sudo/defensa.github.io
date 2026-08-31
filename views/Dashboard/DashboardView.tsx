@@ -114,6 +114,56 @@ const DashboardView: React.FC<Props> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleExportPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const M = 48;
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    let y = M;
+    const write = (text: string, size = 10, bold = false) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      for (const part of doc.splitTextToSize(text, pageW - M * 2)) {
+        if (y > pageH - M) { doc.addPage(); y = M; }
+        doc.text(part, M, y);
+        y += size * 1.45;
+      }
+    };
+    write('Defensa - Practice Data Export', 16, true);
+    write(new Date().toLocaleString(), 9);
+    y += 10;
+    write('Profile', 12, true);
+    write(`Name: ${user?.fullName ?? '-'}`);
+    write(`Email: ${user?.email ?? '-'}`);
+    write(`Program: ${user?.program ?? '-'}    Year Level: ${user?.yearLevel ?? '-'}`);
+    if (project) {
+      y += 6;
+      write('Project', 12, true);
+      write(`Title: ${project.title}`);
+      write(`Methodology: ${project.methodology ?? '-'}`);
+    }
+    y += 10;
+    write(`Practice Sessions (${sessionHistory?.length ?? 0})`, 12, true);
+    (sessionHistory ?? []).forEach((s, si) => {
+      y += 8;
+      write(
+        `${si + 1}. ${s.date ? new Date(s.date).toLocaleString() : ''}   Overall ${s.overallScore ?? '-'} / 100   ${s.questionsAnswered ?? (s.history?.length ?? 0)} questions`,
+        10, true,
+      );
+      (s.history ?? []).forEach((qa, qi) => {
+        const f = (qa.feedback ?? {}) as any;
+        write(`Q${qi + 1} [${qa.category ?? ''}] ${qa.question ?? ''}`, 9);
+        write(`Answer: ${qa.answer ?? '(no answer)'}`, 9);
+        write(
+          `Score ${f.score ?? '-'}  |  Accuracy ${f.semanticRelevance ?? '-'}  |  Keyword ${f.keywordAccuracy ?? '-'}  |  Clarity ${f.clarity ?? '-'}  |  Confidence ${f.confidenceLevel ?? '-'}`,
+          8,
+        );
+      });
+    });
+    doc.save(`defensa-data-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const handleConfirmRemove = async () => {
     setRemoving(true);
     setRemoveError(null);
@@ -552,16 +602,27 @@ const DashboardView: React.FC<Props> = ({
                     </div>
                     <div className="p-6 bg-slate-50 dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800">
                       <p className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Export My Data</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">Download every practice session, question, answer, and score as a CSV file you can open in Excel.</p>
-                      <motion.button
-                        type="button"
-                        onClick={handleExportData}
-                        className="w-full px-8 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
-                        whileHover={{ x: 4 }}
-                        whileTap={{ scale: 0.99 }}
-                      >
-                        Download CSV file <Download className="w-5 h-5" />
-                      </motion.button>
+                      <p className="text-sm text-slate-600 dark:text-slate-400 font-medium mb-4">Download your profile and every practice session, question, answer, and score. Choose CSV for a spreadsheet or PDF for a printable report.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <motion.button
+                          type="button"
+                          onClick={handleExportData}
+                          className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.99 }}
+                        >
+                          Download CSV <Download className="w-5 h-5" />
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          onClick={handleExportPDF}
+                          className="w-full px-6 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl text-slate-700 dark:text-slate-200 font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.99 }}
+                        >
+                          Download PDF <Download className="w-5 h-5" />
+                        </motion.button>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
