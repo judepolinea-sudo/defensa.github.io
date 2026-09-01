@@ -715,22 +715,27 @@ export async function createApp() {
       }
 
       // Must be a real, active account in the system of record (Supabase).
-      const { data: row } = await supabase
+      // Match case-insensitively — some accounts were created with the email
+      // stored in its original casing (e.g. "ST6@nu-clark.edu.ph").
+      const { data: rows } = await supabase
         .from("users")
-        .select("firebase_uid, full_name, is_deleted, status")
-        .eq("email", email)
-        .maybeSingle();
+        .select("firebase_uid, email, full_name, is_deleted, status")
+        .ilike("email", email);
+      const row = (rows ?? [])[0];
 
       if (!row || row.is_deleted === true || row.status === "PENDING" || row.status === "REJECTED") {
         await logAudit(null, "PASSWORD_RESET_REQUEST", "users", email, { email, matched: false });
         return res.json(GENERIC);
       }
 
+      // Store the request under the account's actual email casing.
+      const acctEmail = (row.email as string) || email;
+
       // One pending request per email — replace any existing one.
-      await supabase.from("password_reset_requests").delete().eq("email", email);
+      await supabase.from("password_reset_requests").delete().ilike("email", acctEmail);
       const { error: insErr } = await supabase.from("password_reset_requests").insert({
         firebase_uid: row.firebase_uid,
-        email,
+        email: acctEmail,
         full_name: row.full_name ?? null,
         enc_password: encryptRegPassword(newPassword),
         status: "PENDING",
@@ -963,12 +968,13 @@ export async function createApp() {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
       }
 
-      const { email, password, fullName, role, program, yearLevel } = req.body;
-      if (!email || !password || !fullName || !role) {
+      const { email: rawEmail, password, fullName, role, program, yearLevel } = req.body;
+      if (!rawEmail || !password || !fullName || !role) {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName, role",
         });
       }
+      const email = String(rawEmail).trim().toLowerCase();
 
       const normalizedRole = (role as string).toUpperCase();
       if (!isValidRole(normalizedRole)) {
