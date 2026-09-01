@@ -190,6 +190,7 @@ const DashboardView: React.FC<Props> = ({
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
 
+  const [nameDraft, setNameDraft] = useState<string>(user?.fullName ?? '');
   const [programDraft, setProgramDraft] = useState<string>(user?.program ?? '');
   const [yearDraft, setYearDraft] = useState<string>(user?.yearLevel ?? '');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -198,11 +199,13 @@ const DashboardView: React.FC<Props> = ({
   // Re-sync drafts / photo whenever the authoritative user object changes
   useEffect(() => {
     setPhotoPreview(user?.avatar ?? null);
+    setNameDraft(user?.fullName ?? '');
     setProgramDraft(user?.program ?? '');
     setYearDraft(user?.yearLevel ?? '');
-  }, [user?.avatar, user?.program, user?.yearLevel]);
+  }, [user?.avatar, user?.fullName, user?.program, user?.yearLevel]);
 
   const profileDirty =
+    nameDraft.trim() !== (user?.fullName ?? '') ||
     (programDraft.trim() || '') !== (user?.program ?? '') ||
     (yearDraft.trim() || '') !== (user?.yearLevel ?? '');
 
@@ -256,10 +259,18 @@ const DashboardView: React.FC<Props> = ({
   };
 
   const handleSaveProfile = async () => {
+    if (!nameDraft.trim()) {
+      setProfileMsg({ ok: false, text: 'Your name cannot be empty.' });
+      return;
+    }
     setSavingProfile(true);
     setProfileMsg(null);
     try {
-      await patchProfile({ program: programDraft.trim(), yearLevel: yearDraft.trim() });
+      await patchProfile({
+        fullName: nameDraft.trim(),
+        program: programDraft.trim(),
+        yearLevel: yearDraft.trim(),
+      });
       setProfileMsg({ ok: true, text: 'Profile saved.' });
     } catch (err: any) {
       setProfileMsg({ ok: false, text: err.message || 'Could not save your profile.' });
@@ -643,6 +654,18 @@ const DashboardView: React.FC<Props> = ({
                         {photoBusy ? 'Saving…' : photoPreview ? 'Change Photo' : 'Add Photo'}
                       </button>
                     </div>
+                  </div>
+                  <div className="mb-6">
+                    <label htmlFor="settings-name" className="block text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Full Name</label>
+                    <input
+                      id="settings-name"
+                      type="text"
+                      value={nameDraft}
+                      onChange={(e) => setNameDraft(e.target.value)}
+                      placeholder="Your full name"
+                      maxLength={120}
+                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
+                    />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>

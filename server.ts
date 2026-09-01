@@ -558,9 +558,17 @@ export async function createApp() {
       const caller = await verifyAndGetCaller(req.headers.authorization);
       if (!caller) return res.status(401).json({ message: "Unauthorized" });
 
-      const { program, yearLevel, avatar } = req.body ?? {};
+      const { fullName, program, yearLevel, avatar } = req.body ?? {};
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
+      let newDisplayName: string | null = null;
+      if (fullName !== undefined) {
+        if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 120) {
+          return res.status(400).json({ message: "Name is required and must be under 120 characters." });
+        }
+        updates.full_name = fullName.trim();
+        newDisplayName = fullName.trim();
+      }
       if (program !== undefined) {
         if (program !== null && (typeof program !== "string" || program.length > MAX_DEPARTMENT_LEN)) {
           return res.status(400).json({ message: "Program name is invalid or too long." });
@@ -590,6 +598,13 @@ export async function createApp() {
         .select()
         .single();
       if (error) throw new Error(error.message);
+
+      // Keep the Firebase Auth display name in sync (best effort).
+      if (newDisplayName) {
+        await auth.updateUser(caller.decoded.uid, { displayName: newDisplayName }).catch((e) => {
+          console.warn("Could not sync Firebase displayName:", e?.message);
+        });
+      }
 
       await logAudit(caller.decoded.uid, "PROFILE_UPDATE", "users", caller.decoded.uid, {
         fields: Object.keys(updates).filter((k) => k !== "updated_at"),
