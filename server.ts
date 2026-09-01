@@ -375,7 +375,7 @@ export async function createApp() {
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: blob: https:",
     "connect-src 'self' https: wss:",
-    "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
+    "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com",
     "worker-src 'self' blob:",
     "media-src 'self' blob:",
     "manifest-src 'self'",

@@ -209,7 +209,7 @@ interface Props {
 
 const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, onExit }) => {
   // ── Core state ──────────────────────────────────────────────────
-  const [uiState, setUiState] = useState<'intro' | 'generating' | 'active' | 'evaluating' | 'feedback'>('intro');
+  const [uiState, setUiState] = useState<'intro' | 'generating' | 'active' | 'evaluating' | 'feedback' | 'finalizing'>('intro');
   const [coverageMap, setCoverageMap] = useState<CoverageMap>({});
   const [targetSection, setTargetSection] = useState<string>('');
   const [currentQuestion, setCurrentQuestion] = useState<PanelQuestion | null>(null);
@@ -495,7 +495,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   const completeSession = (finalHistory: QuestionAnswer[]) => {
     if (sessionCompletedRef.current) return;
     sessionCompletedRef.current = true;
-    setUiState('generating');
+    setUiState('finalizing');
     if (finalHistory.length === 0) { onExit(); return; }
     const avg = finalHistory.reduce((a, h) => a + h.feedback.score, 0) / finalHistory.length;
     const scoreMap = {
@@ -1238,6 +1238,25 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
               </h2>
               <p className="text-slate-300 text-sm leading-relaxed drop-shadow">
                 Analyzing your research document and formulating your first question…
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── FINALIZING (session end) ───────────────────────────── */}
+        {uiState === 'finalizing' && (
+          <div className="relative h-[calc(100vh-56px)] flex items-center justify-center p-6 overflow-hidden bg-[#070C16]">
+            <ShaderBackground />
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center] from-transparent via-[#070C16]/60 to-[#070C16]/95 pointer-events-none" />
+            <div className="relative z-10 text-center max-w-sm">
+              <div className="w-14 h-14 bg-blue-600/30 border border-blue-500/40 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-blue-900/40 backdrop-blur-sm">
+                <Loader2 className="w-7 h-7 text-blue-300 animate-spin" />
+              </div>
+              <h2 className="text-xl font-black uppercase tracking-tight mb-2 text-white drop-shadow">
+                Compiling Your Results
+              </h2>
+              <p className="text-slate-300 text-sm leading-relaxed drop-shadow">
+                Scoring your answers and building your readiness summary…
               </p>
             </div>
           </div>

@@ -6,8 +6,13 @@ import {
   ChevronRight, Play, Info, CheckCircle, Circle,
   Target, TrendingUp, Clock, Plus, ExternalLink,
   ShieldCheck, AlertCircle, Trash2, Loader2, AlertTriangle,
-  Download,
+  Download, X,
 } from 'lucide-react';
+
+// Tutorial video. Set to a YouTube/Vimeo embed URL
+// (e.g. 'https://www.youtube-nocookie.com/embed/VIDEO_ID') or a local file
+// placed at defensa-new/public/ (e.g. '/tutorial.mp4'). Leave '' to hide.
+const TUTORIAL_VIDEO_URL = '/tutorial.mp4';
 import { ProjectProfile, SessionResult } from '../../types';
 import DefenseGuideModal from '../components/DefenseGuideModal';
 import ReadinessDashboardView from './ReadinessDashboardView';
@@ -61,6 +66,8 @@ const DashboardView: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'analytics' | 'settings'>('home');
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [tutorialError, setTutorialError] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -453,7 +460,12 @@ const DashboardView: React.FC<Props> = ({
                       <Info className="w-5 h-5 text-blue-500" /> Resources
                     </h3>
                     <div className="space-y-4">
-                      <motion.button className="w-full p-6 flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-3xl group cursor-pointer transition-colors" whileTap={{ scale: 0.99 }}>
+                      <motion.button
+                        type="button"
+                        onClick={() => { setTutorialError(false); setShowTutorial(true); }}
+                        className="w-full p-6 flex items-center justify-between bg-blue-50 dark:bg-blue-500/10 hover:bg-blue-100 dark:hover:bg-blue-500/20 rounded-3xl group cursor-pointer transition-colors"
+                        whileTap={{ scale: 0.99 }}
+                      >
                         <div>
                           <p className="font-black text-blue-900 dark:text-blue-200 leading-none mb-1">Tutorial Video</p>
                           <p className="text-xs text-blue-600 font-bold uppercase tracking-widest">Master simulation</p>
@@ -645,6 +657,64 @@ const DashboardView: React.FC<Props> = ({
       </main>
 
       <DefenseGuideModal isOpen={showGuide} onClose={() => setShowGuide(false)} />
+
+      <AnimatePresence>
+        {showTutorial && (
+          <motion.div
+            className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowTutorial(false)}
+          >
+            <motion.div
+              className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-2xl"
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter leading-none">Tutorial Video</p>
+                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">How to use Defensa</p>
+                </div>
+                <button type="button" onClick={() => setShowTutorial(false)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="bg-black aspect-video">
+                {!TUTORIAL_VIDEO_URL || tutorialError ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-center gap-3 p-8 bg-slate-50 dark:bg-slate-950">
+                    <Play className="w-10 h-10 text-slate-300 dark:text-slate-700" />
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">The tutorial video is not available yet.</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 max-w-sm">
+                      In the meantime, open the Defense Guide for step by step preparation tips.
+                    </p>
+                    <button type="button" onClick={() => { setShowTutorial(false); setShowGuide(true); }}
+                      className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-colors">
+                      Open Defense Guide
+                    </button>
+                  </div>
+                ) : /youtube|vimeo/.test(TUTORIAL_VIDEO_URL) ? (
+                  <iframe
+                    src={TUTORIAL_VIDEO_URL}
+                    title="Defensa tutorial"
+                    className="w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    src={TUTORIAL_VIDEO_URL}
+                    controls
+                    autoPlay
+                    className="w-full h-full"
+                    onError={() => setTutorialError(true)}
+                  />
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showRemoveConfirm && (
