@@ -15,7 +15,12 @@ import {
   Bot,
   Mic,
   Upload,
+  X,
 } from "lucide-react";
+
+// Demo video for the landing page's "Institutional Demo" button.
+// A local file at defensa-new/public/, or a YouTube/Vimeo embed URL.
+const DEMO_VIDEO_URL = "/tutorial.mp4";
 import PricingSection from "@/components/ui/pricing-section-4";
 import { GradientCard } from "@/components/ui/gradient-card";
 
@@ -99,6 +104,7 @@ const WavySeam: React.FC<{
 
 const LandingView: React.FC<Props> = ({ onLogin }) => {
   const [scrolled, setScrolled] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
   const [activeSection, setActiveSection] =
     useState<(typeof NAV_LINKS)[number]["id"]>("home");
   // While true, scroll-spy updates from the IntersectionObserver are ignored — set on nav-link
@@ -239,6 +245,7 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
             </button>
             <button
               type="button"
+              onClick={() => setShowDemo(true)}
               className="px-12 py-6 bg-white hover:bg-blue-100/50 text-slate-900 font-black rounded-3xl text-xl border border-blue-100 shadow-sm flex items-center justify-center gap-3 transition-all"
             >
               <Play className="w-6 h-6 fill-current" /> Institutional Demo
@@ -492,6 +499,53 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
           </div>
         </div>
       </section>
+
+      {showDemo && (
+        <motion.div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => setShowDemo(false)}
+        >
+          <motion.div
+            className="w-full max-w-4xl bg-slate-900 rounded-3xl overflow-hidden border border-white/10 shadow-2xl"
+            initial={{ scale: 0.95, y: 12 }}
+            animate={{ scale: 1, y: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <div>
+                <p className="font-black text-white uppercase tracking-tighter leading-none">
+                  Institutional Demo
+                </p>
+                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                  How Defensa works
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDemo(false)}
+                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="bg-black aspect-video">
+              {/youtube|vimeo/.test(DEMO_VIDEO_URL) ? (
+                <iframe
+                  src={DEMO_VIDEO_URL}
+                  title="Defensa institutional demo"
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <video src={DEMO_VIDEO_URL} controls autoPlay className="w-full h-full" />
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 };
