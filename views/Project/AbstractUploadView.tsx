@@ -1,14 +1,26 @@
 ﻿
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle, Loader2, Info, AlertCircle, X, FolderOpen, Sparkles, BookOpen, ChevronLeft } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Loader2, Info, AlertCircle, X, FolderOpen, Sparkles, BookOpen, ChevronLeft, Home, BarChart3, Settings, LogOut, ShieldCheck } from 'lucide-react';
 import { ProjectProfile } from '../../types';
 import { analyzeAbstract } from '../../services/geminiService';
 
+type DashTab = 'home' | 'projects' | 'analytics' | 'settings';
+
 interface Props {
   project: ProjectProfile | null;
+  user?: any;
   onComplete: (project: Partial<ProjectProfile>) => void;
   onBack?: () => void;
+  onNavigate?: (tab: DashTab) => void;
+  onLogout?: () => void;
 }
+
+const NAV_ITEMS: { id: DashTab; icon: React.ComponentType<{ className?: string }>; label: string }[] = [
+  { id: 'home', icon: Home, label: 'Dashboard' },
+  { id: 'projects', icon: BookOpen, label: 'Projects' },
+  { id: 'analytics', icon: BarChart3, label: 'Analytics' },
+  { id: 'settings', icon: Settings, label: 'Settings' },
+];
 
 const ALLOWED_TYPES = [
   'application/pdf',
@@ -17,7 +29,7 @@ const ALLOWED_TYPES = [
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx'];
 const MAX_SIZE_BYTES = 30 * 1024 * 1024;
 
-const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) => {
+const AbstractUploadView: React.FC<Props> = ({ project, user, onComplete, onBack, onNavigate, onLogout }) => {
   const [step, setStep] = useState<'upload' | 'processing' | 'result'>('upload');
   const [uploadMode, setUploadMode] = useState<'single' | 'folder'>('single');
   const [progress, setProgress] = useState(0);
@@ -190,8 +202,45 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col p-4 md:p-10">
-      <div className="max-w-3xl mx-auto w-full">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col">
+      {onNavigate && (
+        <header className="mx-4 md:mx-6 mt-4 md:mt-6 bg-slate-950 text-white px-4 md:px-6 py-4 rounded-2xl border border-white/10 shadow-lg shadow-black/20 flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <span className="text-xl font-black tracking-tight uppercase block leading-none">Defensa</span>
+              <span className="text-[10px] text-blue-400 font-bold tracking-widest uppercase">Student Hub</span>
+            </div>
+          </div>
+
+          <nav className="flex items-center justify-center gap-2 flex-wrap flex-grow">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition-colors text-slate-400 dark:text-slate-500 hover:text-white"
+              >
+                <item.icon className="w-5 h-5" /> {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-2 px-4 py-2.5 text-slate-400 dark:text-slate-500 hover:text-white transition-colors font-bold text-sm shrink-0"
+            >
+              <LogOut className="w-5 h-5" /> Logout
+            </button>
+          )}
+        </header>
+      )}
+
+      <div className="max-w-3xl mx-auto w-full p-4 md:p-10">
 
         {onBack && step !== 'processing' && (
           <button
@@ -210,7 +259,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
               <p className="text-slate-500 dark:text-slate-400">
                 {project
                   ? <>Project: <span className="font-bold text-slate-800 dark:text-slate-100">{project.title}</span></>
-                  : 'Upload your abstract or thesis to set up your project profile automatically.'}
+                  : 'Upload your manuscript or thesis to set up your project profile automatically.'}
               </p>
             </div>
 
@@ -228,7 +277,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
                   }`}
                 >
                   {mode === 'single' ? <FileText className="w-4 h-4" /> : <FolderOpen className="w-4 h-4" />}
-                  {mode === 'single' ? 'Abstract File' : 'Thesis Folder'}
+                  {mode === 'single' ? 'Manuscript File' : 'Thesis Folder'}
                 </button>
               ))}
             </div>
@@ -262,7 +311,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
                 ref={inputRef}
                 type="file"
                 id="abstract-file-upload"
-                aria-label="Upload abstract file (PDF or DOCX)"
+                aria-label="Upload manuscript file (PDF or DOCX)"
                 className="hidden"
                 onChange={handleFileChange}
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -272,7 +321,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
               }`}>
                 {fileError ? <AlertCircle className="w-10 h-10" /> : <Upload className="w-10 h-10" />}
               </div>
-              <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Drag & drop your abstract here</p>
+              <p className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">Drag & drop your manuscript here</p>
               <p className="text-slate-500 dark:text-slate-400 mb-6">or <span className="text-blue-600 font-bold underline">Browse Files</span></p>
 
               <div className="flex flex-wrap justify-center gap-4 text-xs font-semibold text-slate-400 dark:text-slate-500">
@@ -320,7 +369,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
             <div className="mt-8 flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-500/10 rounded-2xl text-left text-blue-800 dark:text-blue-200 text-sm">
               <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
               {uploadMode === 'single'
-                ? <p>Upload your abstract as a <strong>PDF</strong> or <strong>Word (.docx)</strong> file. Other formats like TXT, images, or scanned PDFs are not supported.</p>
+                ? <p>Upload your manuscript as a <strong>PDF</strong> or <strong>Word (.docx)</strong> file. Other formats like TXT, images, or scanned PDFs are not supported.</p>
                 : <p>Select a folder containing your thesis chapters. The AI will index all PDF and DOCX files it finds and use them to generate questions during your session.</p>
               }
             </div>
@@ -330,7 +379,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
         {step === 'processing' && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 shadow-sm border border-slate-200 dark:border-slate-800 text-center">
             <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-6" />
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">Processing Your Abstract...</h2>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 mb-2">Processing Your Manuscript...</h2>
             <p className="text-slate-500 dark:text-slate-400 mb-10">Extracting and analyzing key research components</p>
 
             <div className="space-y-4 text-left mb-10 max-w-md mx-auto">
@@ -392,7 +441,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
                 <CheckCircle className="w-8 h-8" />
               </div>
               <h2 className="text-3xl font-bold text-slate-800 dark:text-slate-100">
-                {folderResults.length > 0 ? 'Thesis Indexed!' : 'Abstract Analyzed!'}
+                {folderResults.length > 0 ? 'Thesis Indexed!' : 'Manuscript Analyzed!'}
               </h2>
               <p className="text-slate-500 dark:text-slate-400">We've extracted the following details from your research.</p>
 
@@ -468,7 +517,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) =>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-slate-400 dark:text-slate-500 text-sm">No topics could be identified from this abstract.</p>
+                  <p className="text-slate-400 dark:text-slate-500 text-sm">No topics could be identified from this manuscript.</p>
                 )}
               </div>
             </div>

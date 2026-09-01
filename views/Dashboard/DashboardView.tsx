@@ -28,6 +28,7 @@ interface Props {
   onUploadAbstract: () => void;
   onUserUpdate?: (user: any) => void;
   onLogout: () => void;
+  initialTab?: 'home' | 'projects' | 'analytics' | 'settings';
 }
 
 const pageVariants = {
@@ -64,9 +65,9 @@ const YEAR_LEVELS = ['3rd Year', '4th Year'];
 const DashboardView: React.FC<Props> = ({
   user, token, project, sessionHistory,
   onEditProject, onDeleteProject, onStartPractice,
-  onUploadAbstract, onUserUpdate, onLogout,
+  onUploadAbstract, onUserUpdate, onLogout, initialTab,
 }) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'analytics' | 'settings'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'analytics' | 'settings'>(initialTab ?? 'home');
   const [showToken, setShowToken] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
@@ -392,7 +393,7 @@ const DashboardView: React.FC<Props> = ({
                     <div className="space-y-4">
                       {[
                         { done: true, label: 'Account created & verified', icon: <CheckCircle className="w-6 h-6 text-green-500" />, classes: 'bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800' },
-                        { done: !!(project?.abstractText), label: 'Upload your research abstract', icon: project?.abstractText ? <CheckCircle className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6 text-slate-300 dark:text-slate-600" />, classes: `border-2 border-dashed ${project?.abstractText ? 'bg-green-50 dark:bg-green-500/10/50 border-green-200' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}` },
+                        { done: !!(project?.abstractText), label: 'Upload your research manuscript', icon: project?.abstractText ? <CheckCircle className="w-6 h-6 text-green-500" /> : <Circle className="w-6 h-6 text-slate-300 dark:text-slate-600" />, classes: `border-2 border-dashed ${project?.abstractText ? 'bg-green-50 dark:bg-green-500/10/50 border-green-200' : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900'}` },
                         { done: false, label: 'Start your first practice session', icon: <Circle className="w-6 h-6 text-slate-300 dark:text-slate-600" />, classes: 'border-2 border-dashed border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900' },
                       ].map((step, i) => (
                         <motion.div
@@ -414,8 +415,8 @@ const DashboardView: React.FC<Props> = ({
                           <div className="flex items-start gap-3 p-5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 rounded-3xl">
                             <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
                             <div>
-                              <p className="font-black text-amber-800 dark:text-amber-300 text-sm">Abstract required before practice</p>
-                              <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">Upload your research abstract first so the AI can generate relevant questions.</p>
+                              <p className="font-black text-amber-800 dark:text-amber-300 text-sm">Manuscript required before practice</p>
+                              <p className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">Upload your research manuscript first so the AI can generate relevant questions.</p>
                             </div>
                           </div>
                           <motion.button
@@ -425,7 +426,7 @@ const DashboardView: React.FC<Props> = ({
                             whileHover={{ scale: 1.03 }}
                             whileTap={{ scale: 0.97 }}
                           >
-                            Upload Abstract <ChevronRight className="w-5 h-5" />
+                            Upload Manuscript <ChevronRight className="w-5 h-5" />
                           </motion.button>
                         </div>
                       ) : (
@@ -586,7 +587,7 @@ const DashboardView: React.FC<Props> = ({
                 <motion.div variants={itemVariants} className="bg-white dark:bg-slate-900 rounded-[40px] border-2 border-dashed border-slate-200 dark:border-slate-800 p-20 text-center">
                   <div className="w-20 h-20 bg-slate-50 dark:bg-slate-950 text-slate-300 dark:text-slate-600 rounded-full flex items-center justify-center mx-auto mb-6"><BookOpen className="w-10 h-10" /></div>
                   <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2">No project yet</h3>
-                  <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-8 font-medium leading-relaxed">Upload your abstract or thesis to set up your project profile automatically.</p>
+                  <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-8 font-medium leading-relaxed">Upload your manuscript or thesis to set up your project profile automatically.</p>
                   <motion.button onClick={onUploadAbstract} className="px-10 py-5 bg-slate-900 text-white font-black rounded-3xl uppercase tracking-tighter shadow-xl" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Upload File</motion.button>
                 </motion.div>
               ) : (
@@ -863,7 +864,7 @@ const DashboardView: React.FC<Props> = ({
                 Remove This Project?
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-sm mb-4 leading-relaxed">
-                This permanently deletes the project and its uploaded abstract for your whole group.
+                This permanently deletes the project and its uploaded manuscript for your whole group.
                 Your past practice sessions and scores are kept. You can set up a new project right after.
               </p>
               {project && (

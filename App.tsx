@@ -72,6 +72,18 @@ const App: React.FC = () => {
   const [lastSession, setLastSession] = useState<SessionResult | null>(null);
   const [sessionHistory, setSessionHistory] = useState<SessionResult[]>([]);
   const [sessionConfig, setSessionConfig] = useState<any>(null);
+  const [dashboardTab, setDashboardTab] = useState<
+    "home" | "projects" | "analytics" | "settings"
+  >("home");
+
+  // Open the student dashboard on a specific tab (used by other screens' nav
+  // bars so the top navigation works from anywhere, not just the dashboard).
+  const openStudentDashboard = (
+    tab: "home" | "projects" | "analytics" | "settings" = "home",
+  ) => {
+    setDashboardTab(tab);
+    setCurrentView(ViewState.STUDENT_DASHBOARD);
+  };
 
   useEffect(() => {
     // Picks up the result of a signInWithRedirect() Google login (the popup
@@ -167,7 +179,7 @@ const App: React.FC = () => {
     }
     setProject(null);
     setLastSession(null);
-    setCurrentView(ViewState.STUDENT_DASHBOARD);
+    openStudentDashboard("projects");
   };
 
   const handleSessionComplete = async (result: SessionResult) => {
@@ -261,6 +273,8 @@ const App: React.FC = () => {
 
       {currentView === ViewState.STUDENT_DASHBOARD && (
         <DashboardView
+          key={dashboardTab}
+          initialTab={dashboardTab}
           user={user}
           token={token}
           project={project}
@@ -342,14 +356,17 @@ const App: React.FC = () => {
               alert(err.message || "Failed to save project.");
             }
           }}
-          onCancel={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          onCancel={() => openStudentDashboard("home")}
         />
       )}
 
       {currentView === ViewState.ABSTRACT_UPLOAD && (
         <AbstractUploadView
           project={project}
-          onBack={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          user={user}
+          onBack={() => openStudentDashboard("home")}
+          onNavigate={openStudentDashboard}
+          onLogout={handleLogout}
           onComplete={async (p) => {
             try {
               const isCreate = !project?.id;
@@ -379,7 +396,7 @@ const App: React.FC = () => {
               if (res.ok) {
                 const saved = await res.json();
                 setProject(saved);
-                setCurrentView(ViewState.STUDENT_DASHBOARD);
+                openStudentDashboard("projects");
                 return;
               }
               const rawBody = await res.text();
@@ -406,7 +423,7 @@ const App: React.FC = () => {
             setSessionConfig(config);
             setCurrentView(ViewState.PRACTICE_SESSION);
           }}
-          onBack={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          onBack={() => openStudentDashboard("home")}
         />
       )}
 
@@ -415,14 +432,14 @@ const App: React.FC = () => {
           project={project}
           config={sessionConfig}
           onComplete={handleSessionComplete}
-          onExit={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          onExit={() => openStudentDashboard("home")}
         />
       )}
 
       {currentView === ViewState.SESSION_SUMMARY && lastSession && (
         <SessionSummaryView
           result={lastSession}
-          onGoDashboard={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          onGoDashboard={() => openStudentDashboard("home")}
           onViewDetailed={() => setCurrentView(ViewState.READINESS_DASHBOARD)}
         />
       )}
@@ -430,7 +447,7 @@ const App: React.FC = () => {
       {currentView === ViewState.READINESS_DASHBOARD && (
         <ReadinessDashboardView
           history={sessionHistory}
-          onBack={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
+          onBack={() => openStudentDashboard("home")}
           onNewSession={() => setCurrentView(ViewState.SESSION_CONFIG)}
         />
       )}
