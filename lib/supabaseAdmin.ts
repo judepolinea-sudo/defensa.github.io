@@ -47,6 +47,7 @@ export function rowToProfile(row: Record<string, any>) {
     role: row.role as string,
     program: row.program ?? null,
     yearLevel: row.year_level ?? null,
+    avatar: row.avatar ?? null,
     groupId: row.group_id ?? null,
     adviserId: row.adviser_firebase_uid ?? null,
     isDeleted: row.is_deleted as boolean,

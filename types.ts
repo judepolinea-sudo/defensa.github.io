@@ -205,6 +205,7 @@ export interface User {
   // Free text — any program/department, not limited to the Department enum.
   program?: string;
   yearLevel?: string;
+  avatar?: string | null;
   performance?: number[];
   project?: ProjectProfile;
   groupId?: string;

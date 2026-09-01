@@ -549,6 +549,60 @@ export async function createApp() {
   });
 
   // ===============================================================
+  // AUTH: UPDATE OWN PROFILE
+  // A signed-in user can change their own program, year level, and photo.
+  // ===============================================================
+
+  app.patch("/api/users/me", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+
+      const { program, yearLevel, avatar } = req.body ?? {};
+      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+
+      if (program !== undefined) {
+        if (program !== null && (typeof program !== "string" || program.length > MAX_DEPARTMENT_LEN)) {
+          return res.status(400).json({ message: "Program name is invalid or too long." });
+        }
+        updates.program = typeof program === "string" && program.trim() ? program.trim() : null;
+      }
+      if (yearLevel !== undefined) {
+        if (yearLevel !== null && (typeof yearLevel !== "string" || yearLevel.length > 40)) {
+          return res.status(400).json({ message: "Year level is invalid." });
+        }
+        updates.year_level = typeof yearLevel === "string" && yearLevel.trim() ? yearLevel.trim() : null;
+      }
+      if (avatar !== undefined) {
+        if (
+          avatar !== null &&
+          (typeof avatar !== "string" || !avatar.startsWith("data:image/") || avatar.length > 400_000)
+        ) {
+          return res.status(400).json({ message: "The image is invalid or too large." });
+        }
+        updates.avatar = avatar;
+      }
+
+      const { data, error } = await supabase
+        .from("users")
+        .update(updates)
+        .eq("firebase_uid", caller.decoded.uid)
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+
+      await logAudit(caller.decoded.uid, "PROFILE_UPDATE", "users", caller.decoded.uid, {
+        fields: Object.keys(updates).filter((k) => k !== "updated_at"),
+      });
+
+      res.json({ user: rowToProfile(data) });
+    } catch (error: any) {
+      console.error("Profile update error:", error);
+      res.status(500).json({ message: error.message || "Server error" });
+    }
+  });
+
+  // ===============================================================
   // PUBLIC SELF-REGISTRATION
   // Unauthenticated. This does NOT create a Firebase Auth user or a `users`
   // row. It stores the request in registration_requests (password encrypted)

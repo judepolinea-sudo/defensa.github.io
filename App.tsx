@@ -274,6 +274,7 @@ const App: React.FC = () => {
             }
             setCurrentView(ViewState.SESSION_CONFIG);
           }}
+          onUserUpdate={(u) => setUser(u)}
           onLogout={handleLogout}
         />
       )}

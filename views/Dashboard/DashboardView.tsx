@@ -26,6 +26,7 @@ interface Props {
   onDeleteProject: () => Promise<void>;
   onStartPractice: () => void;
   onUploadAbstract: () => void;
+  onUserUpdate?: (user: any) => void;
   onLogout: () => void;
 }
 
@@ -58,10 +59,12 @@ function useAnimatedCounter(target: number, duration = 1200) {
   return count;
 }
 
+const YEAR_LEVELS = ['3rd Year', '4th Year'];
+
 const DashboardView: React.FC<Props> = ({
   user, token, project, sessionHistory,
   onEditProject, onDeleteProject, onStartPractice,
-  onUploadAbstract, onLogout,
+  onUploadAbstract, onUserUpdate, onLogout,
 }) => {
   const [activeTab, setActiveTab] = useState<'home' | 'projects' | 'analytics' | 'settings'>('home');
   const [showToken, setShowToken] = useState(false);
@@ -183,26 +186,87 @@ const DashboardView: React.FC<Props> = ({
       setRemoving(false);
     }
   };
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(user?.avatar ?? null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) return;
-    const url = URL.createObjectURL(file);
-    setPhotoPreview((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return url;
+  const [programDraft, setProgramDraft] = useState<string>(user?.program ?? '');
+  const [yearDraft, setYearDraft] = useState<string>(user?.yearLevel ?? '');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Re-sync drafts / photo whenever the authoritative user object changes
+  useEffect(() => {
+    setPhotoPreview(user?.avatar ?? null);
+    setProgramDraft(user?.program ?? '');
+    setYearDraft(user?.yearLevel ?? '');
+  }, [user?.avatar, user?.program, user?.yearLevel]);
+
+  const profileDirty =
+    (programDraft.trim() || '') !== (user?.program ?? '') ||
+    (yearDraft.trim() || '') !== (user?.yearLevel ?? '');
+
+  const patchProfile = async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/users/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
     });
-    e.target.value = '';
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || 'Could not save your changes.');
+    onUserUpdate?.(data.user);
+    return data.user;
   };
 
-  useEffect(() => {
-    return () => {
-      if (photoPreview) URL.revokeObjectURL(photoPreview);
-    };
-  }, [photoPreview]);
+  // Resize the chosen image to a small square and store it as a data URI so it
+  // persists in the database and shows on every device until changed again.
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) return;
+    setProfileMsg(null);
+    setPhotoBusy(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const size = 256;
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject(new Error('Canvas not supported.'));
+          const scale = Math.max(size / img.width, size / img.height);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => reject(new Error('That file is not a valid image.'));
+        img.src = URL.createObjectURL(file);
+      });
+      await patchProfile({ avatar: dataUrl });
+      setPhotoPreview(dataUrl);
+      setProfileMsg({ ok: true, text: 'Photo updated.' });
+    } catch (err: any) {
+      setProfileMsg({ ok: false, text: err.message || 'Could not update your photo.' });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    setProfileMsg(null);
+    try {
+      await patchProfile({ program: programDraft.trim(), yearLevel: yearDraft.trim() });
+      setProfileMsg({ ok: true, text: 'Profile saved.' });
+    } catch (err: any) {
+      setProfileMsg({ ok: false, text: err.message || 'Could not save your profile.' });
+    } finally {
+      setSavingProfile(false);
+    }
+  };
 
   const userInitials = useMemo(() => {
     if (!user?.fullName) return '??';
@@ -572,21 +636,59 @@ const DashboardView: React.FC<Props> = ({
                       <button
                         type="button"
                         onClick={() => photoInputRef.current?.click()}
-                        className="mt-4 text-xs font-black text-blue-600 uppercase tracking-widest hover:underline"
+                        disabled={photoBusy}
+                        className="mt-4 text-xs font-black text-blue-600 uppercase tracking-widest hover:underline disabled:opacity-50 flex items-center gap-1.5"
                       >
-                        Change Photo
+                        {photoBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        {photoBusy ? 'Saving…' : photoPreview ? 'Change Photo' : 'Add Photo'}
                       </button>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label htmlFor="settings-program" className="block text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Program</label>
-                      <input id="settings-program" type="text" readOnly className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold" defaultValue={user?.program} />
+                      <input
+                        id="settings-program"
+                        type="text"
+                        value={programDraft}
+                        onChange={(e) => setProgramDraft(e.target.value)}
+                        placeholder="e.g. BSIT"
+                        maxLength={120}
+                        className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
+                      />
                     </div>
                     <div>
                       <label htmlFor="settings-year" className="block text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Year Level</label>
-                      <input id="settings-year" type="text" readOnly className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold" defaultValue={user?.yearLevel} />
+                      <select
+                        id="settings-year"
+                        value={yearDraft}
+                        onChange={(e) => setYearDraft(e.target.value)}
+                        className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
+                      >
+                        <option value="">Not set</option>
+                        {YEAR_LEVELS.map((y) => <option key={y} value={y}>{y}</option>)}
+                        {yearDraft && !YEAR_LEVELS.includes(yearDraft) && (
+                          <option value={yearDraft}>{yearDraft}</option>
+                        )}
+                      </select>
                     </div>
+                  </div>
+                  <div className="mt-6 flex items-center gap-4">
+                    <motion.button
+                      type="button"
+                      onClick={handleSaveProfile}
+                      disabled={!profileDirty || savingProfile}
+                      className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black uppercase tracking-tighter text-sm rounded-2xl disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {savingProfile && <Loader2 className="w-4 h-4 animate-spin" />}
+                      Save Changes
+                    </motion.button>
+                    {profileMsg && (
+                      <span className={`text-sm font-bold ${profileMsg.ok ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {profileMsg.text}
+                      </span>
+                    )}
                   </div>
                 </motion.div>
 
