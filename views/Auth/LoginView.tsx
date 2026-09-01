@@ -454,7 +454,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                         ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
                         : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
                     }`}
-                    placeholder="name@nu-clark.edu.ph"
+                    placeholder="name@email.com"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                   />
