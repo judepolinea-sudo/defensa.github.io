@@ -58,6 +58,7 @@ type Tab =
   | "health"
   | "users"
   | "pending"
+  | "resets"
   | "sessions"
   | "projects"
   | "deleted"
@@ -208,6 +209,21 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     }
   }, [token]);
 
+  const [resetRequests, setResetRequests] = useState<any[]>([]);
+
+  const fetchResetRequests = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch("/api/password-reset-requests", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      setResetRequests(await res.json());
+    } catch {
+      /* non-fatal */
+    }
+  }, [token]);
+
   const fetchDeletedUsers = useCallback(async () => {
     setLoading(true);
     try {
@@ -285,15 +301,17 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   useEffect(() => {
     if (activeTab === "users") fetchUsers();
     else if (activeTab === "pending") fetchPendingRequests();
+    else if (activeTab === "resets") fetchResetRequests();
     else if (activeTab === "sessions") fetchSessions();
     else if (activeTab === "projects") fetchProjects();
     else if (activeTab === "deleted") fetchDeletedUsers();
-  }, [activeTab, fetchUsers, fetchPendingRequests, fetchSessions, fetchProjects, fetchDeletedUsers]);
+  }, [activeTab, fetchUsers, fetchPendingRequests, fetchResetRequests, fetchSessions, fetchProjects, fetchDeletedUsers]);
 
-  // Keep the sidebar badge count current regardless of the active tab.
+  // Keep the sidebar badge counts current regardless of the active tab.
   useEffect(() => {
     fetchPendingRequests();
-  }, [fetchPendingRequests]);
+    fetchResetRequests();
+  }, [fetchPendingRequests, fetchResetRequests]);
 
   const handleAddUser = async () => {
     if (
@@ -438,6 +456,42 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     }
   };
 
+  const approveReset = async (id: string, email: string) => {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/password-reset-requests/${id}/approve`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to approve reset");
+      toast.success(data.message || `Password updated for ${email}.`);
+      fetchResetRequests();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to approve password reset.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const rejectReset = async (id: string, email: string) => {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/password-reset-requests/${id}/reject`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to reject reset");
+      toast.success(data.message || `Request for ${email} rejected.`);
+      fetchResetRequests();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reject password reset.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const triggerAction = (action: string) => {
     setIsRefreshing(true);
     setTimeout(() => {
@@ -469,6 +523,11 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       id: "pending",
       icon: <Bell className="w-4 h-5" />,
       label: "Pending Approvals",
+    },
+    {
+      id: "resets",
+      icon: <Key className="w-5 h-5" />,
+      label: "Password Resets",
     },
     {
       id: "sessions",
@@ -613,6 +672,11 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                 {item.id === "pending" && pendingRequests.length > 0 && (
                   <span className="ml-auto bg-white/20 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
                     {pendingRequests.length}
+                  </span>
+                )}
+                {item.id === "resets" && resetRequests.length > 0 && (
+                  <span className="ml-auto bg-white/20 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                    {resetRequests.length}
                   </span>
                 )}
               </span>
@@ -1226,6 +1290,125 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                     </table>
                   </div>
                 )}
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* PASSWORD RESETS */}
+          {activeTab === "resets" && (
+            <motion.div
+              key="resets"
+              variants={pageVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <motion.header variants={itemVariants} className="mb-10">
+                <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tighter uppercase">
+                  Password Resets
+                </h1>
+                <p className="text-slate-500 dark:text-slate-400">
+                  Users who requested a new password. Approving one applies the
+                  new password to their account immediately.
+                </p>
+              </motion.header>
+              <motion.div
+                variants={itemVariants}
+                className="bg-white dark:bg-slate-900 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-950/50 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                        <th className="px-8 py-5">Account</th>
+                        <th className="px-8 py-5">Requested</th>
+                        <th className="px-8 py-5 text-right">Decision</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {resetRequests.map((r, i) => (
+                        <motion.tr
+                          key={r.id}
+                          custom={i}
+                          variants={rowVariants}
+                          initial="hidden"
+                          animate="visible"
+                          className="hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all"
+                        >
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl flex items-center justify-center">
+                                <Key className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-black text-slate-800 dark:text-slate-100 leading-none mb-1 uppercase tracking-tighter">
+                                  {r.fullName || r.email}
+                                </p>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
+                                  {r.email}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {r.createdAt && !isNaN(new Date(r.createdAt).getTime())
+                              ? new Date(r.createdAt).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })
+                              : "—"}
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <motion.button
+                                type="button"
+                                onClick={() => rejectReset(r.id, r.email)}
+                                disabled={actionLoading === r.id}
+                                className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 text-[10px] font-black rounded-xl uppercase tracking-tighter disabled:opacity-50"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                {actionLoading === r.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <X className="w-3.5 h-3.5" />
+                                )}
+                                Reject
+                              </motion.button>
+                              <motion.button
+                                type="button"
+                                onClick={() => approveReset(r.id, r.email)}
+                                disabled={actionLoading === r.id}
+                                className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-500/30 text-[10px] font-black rounded-xl uppercase tracking-tighter disabled:opacity-50"
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                {actionLoading === r.id ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                )}
+                                Approve
+                              </motion.button>
+                            </div>
+                          </td>
+                        </motion.tr>
+                      ))}
+                      {resetRequests.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={3}
+                            className="px-8 py-20 text-center text-slate-400 dark:text-slate-500 font-bold"
+                          >
+                            No password reset requests.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </motion.div>
             </motion.div>
           )}

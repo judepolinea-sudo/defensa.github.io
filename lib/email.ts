@@ -23,44 +23,6 @@ function getTransporter(): nodemailer.Transporter | null {
 const FROM = process.env.EMAIL_FROM ?? "Defensa <no-reply@defensa.app>";
 const APP_URL = process.env.APP_URL ?? "";
 
-export async function sendPasswordResetEmail(opts: {
-  to: string;
-  fullName?: string;
-  resetLink: string;
-}): Promise<boolean> {
-  const t = getTransporter();
-  if (!t || !opts.to || !opts.resetLink) {
-    console.log("[email] SMTP not configured or missing data - skipping password reset email");
-    return false;
-  }
-  try {
-    await t.sendMail({
-      from: FROM,
-      to: opts.to,
-      subject: "Reset your Defensa password",
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
-          <div style="background:#1e293b;padding:24px 32px">
-            <h2 style="color:#fff;margin:0;font-size:20px">Reset your password</h2>
-          </div>
-          <div style="padding:32px;background:#f8fafc">
-            <p style="color:#1e293b;font-size:16px">Hello <strong>${opts.fullName || "there"}</strong>,</p>
-            <p style="color:#475569">We received a request to reset the password for your Defensa account. Click the button below to choose a new password. This link expires in one hour.</p>
-            <div style="margin-top:24px;text-align:center">
-              <a href="${opts.resetLink}" style="background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">Reset password</a>
-            </div>
-            <p style="color:#94a3b8;font-size:12px;margin-top:32px">If you did not request this, you can safely ignore this email and your password will stay the same.</p>
-          </div>
-        </div>`,
-    });
-    console.log("[email] Password reset email sent to", opts.to);
-    return true;
-  } catch (e: any) {
-    console.warn("[email] Failed to send password reset email:", e?.message ?? e);
-    return false;
-  }
-}
-
 export async function sendGoogleWelcomeEmail(opts: {
   to: string;
   fullName: string;

@@ -9,7 +9,7 @@ import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { supabase, rowToProfile, profileToRow, logAudit } from "./lib/supabaseAdmin.ts";
-import { sendGoogleWelcomeEmail, sendPasswordResetEmail } from "./lib/email.ts";
+import { sendGoogleWelcomeEmail } from "./lib/email.ts";
 import {
   saveActiveSession,
   getActiveSession,
@@ -692,23 +692,26 @@ export async function createApp() {
   });
 
   // ===============================================================
-  // FORGOT PASSWORD
-  // Validates the address against the Supabase users table (the system of
-  // record), then issues a Firebase password-reset link. When SMTP is
-  // configured the branded email is sent from here; otherwise the client is
-  // told to fall back to Firebase's own delivery. The response is always
-  // generic so it never reveals whether an account exists.
+  // FORGOT PASSWORD  (admin-approved)
+  // A signed-out user submits their email + a new password. Nothing changes
+  // in Firebase yet — the request is held in password_reset_requests (new
+  // password encrypted at rest) until an admin approves it. The response is
+  // always generic so it never reveals whether an account exists.
   // ===============================================================
 
   app.post("/api/auth/forgot-password", async (req, res) => {
     const GENERIC = {
       message:
-        "If an account exists for that email, a password reset link has been sent.",
+        "Your password reset request has been submitted. An administrator will review it and apply the new password.",
     };
     try {
       const email = String(req.body?.email ?? "").trim().toLowerCase();
+      const newPassword = String(req.body?.newPassword ?? "");
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return res.status(400).json({ message: "Please enter a valid email address." });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ message: "The new password must be at least 6 characters." });
       }
 
       // Must be a real, active account in the system of record (Supabase).
@@ -720,33 +723,132 @@ export async function createApp() {
 
       if (!row || row.is_deleted === true || row.status === "PENDING" || row.status === "REJECTED") {
         await logAudit(null, "PASSWORD_RESET_REQUEST", "users", email, { email, matched: false });
-        return res.json({ ...GENERIC, fallback: false });
+        return res.json(GENERIC);
       }
 
-      let sent = false;
-      try {
-        const link = await auth.generatePasswordResetLink(email);
-        sent = await sendPasswordResetEmail({
-          to: email,
-          fullName: row.full_name ?? undefined,
-          resetLink: link,
-        });
-      } catch (e: any) {
-        console.warn("[forgot-password] link generation failed:", e?.message ?? e);
-      }
+      // One pending request per email — replace any existing one.
+      await supabase.from("password_reset_requests").delete().eq("email", email);
+      const { error: insErr } = await supabase.from("password_reset_requests").insert({
+        firebase_uid: row.firebase_uid,
+        email,
+        full_name: row.full_name ?? null,
+        enc_password: encryptRegPassword(newPassword),
+        status: "PENDING",
+      });
+      if (insErr) throw new Error(insErr.message);
 
       await logAudit(row.firebase_uid ?? null, "PASSWORD_RESET_REQUEST", "users", email, {
         email,
         matched: true,
-        emailedFromServer: sent,
       });
-
-      // fallback:true => the client should call Firebase's sendPasswordResetEmail.
-      return res.json({ ...GENERIC, fallback: !sent });
+      return res.json(GENERIC);
     } catch (error: any) {
       console.error("Forgot-password error:", error);
-      // Still generic — don't leak internal failures as enumeration signal.
-      return res.json({ ...GENERIC, fallback: true });
+      return res.json(GENERIC);
+    }
+  });
+
+  // ---- Password reset requests (Admin only) ----
+
+  app.get("/api/password-reset-requests", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const { data, error } = await supabase
+        .from("password_reset_requests")
+        .select("id, email, full_name, created_at")
+        .order("created_at", { ascending: false });
+      if (error) throw new Error(error.message);
+
+      res.json(
+        (data ?? []).map((r) => ({
+          id: r.id,
+          email: r.email,
+          fullName: r.full_name,
+          createdAt: r.created_at,
+        })),
+      );
+    } catch (error) {
+      console.error("List password reset requests error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  app.post("/api/password-reset-requests/:id/approve", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden: Only Superadmin can approve password resets." });
+      }
+
+      const { id } = req.params;
+      const { data: reqRow, error: rErr } = await supabase
+        .from("password_reset_requests").select("*").eq("id", id).maybeSingle();
+      if (rErr) throw new Error(rErr.message);
+      if (!reqRow) return res.status(404).json({ message: "Request not found or already handled." });
+
+      let newPassword: string;
+      try {
+        newPassword = decryptRegPassword(reqRow.enc_password);
+      } catch {
+        return res.status(500).json({
+          message: "Could not read the stored password. Ask the user to submit the reset again.",
+        });
+      }
+
+      // Resolve the Firebase account (the stored uid, falling back to email).
+      let uid = reqRow.firebase_uid as string | null;
+      if (!uid) {
+        try {
+          uid = (await auth.getUserByEmail(reqRow.email)).uid;
+        } catch {
+          await supabase.from("password_reset_requests").delete().eq("id", id);
+          return res.status(404).json({ message: "No Firebase account for that email. Request removed." });
+        }
+      }
+
+      await auth.updateUser(uid!, { password: newPassword });
+
+      await supabase.from("password_reset_requests").delete().eq("id", id);
+      await logAudit(caller.decoded.uid, "PASSWORD_RESET_APPROVE", "users", uid!, {
+        email: reqRow.email,
+      });
+
+      res.json({ message: `Password updated for ${reqRow.email}. They can now sign in with it.` });
+    } catch (error: any) {
+      console.error("Approve password reset error:", error);
+      res.status(500).json({ message: error.message || "Server error" });
+    }
+  });
+
+  app.post("/api/password-reset-requests/:id/reject", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden: Only Superadmin can reject password resets." });
+      }
+
+      const { id } = req.params;
+      const { data: reqRow } = await supabase
+        .from("password_reset_requests").select("email").eq("id", id).maybeSingle();
+      if (!reqRow) return res.status(404).json({ message: "Request not found or already handled." });
+
+      const { error } = await supabase.from("password_reset_requests").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+
+      await logAudit(caller.decoded.uid, "PASSWORD_RESET_REJECT", "password_reset_requests", id, {
+        email: reqRow.email,
+      });
+      res.json({ message: `Password reset request for ${reqRow.email} was rejected and removed.` });
+    } catch (error: any) {
+      console.error("Reject password reset error:", error);
+      res.status(500).json({ message: "Server error" });
     }
   });
 

@@ -6,7 +6,6 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
-  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -102,38 +101,28 @@ export const setRememberedEmail = (email: string, remember: boolean): void => {
   }
 };
 
-// Asks the backend to issue a password reset. The backend validates the email
-// against the Supabase users table and, when SMTP is configured, sends the
-// branded email itself; otherwise it returns fallback:true and we let Firebase
-// deliver its own reset email. The visible outcome is identical either way.
-export const requestPasswordReset = async (email: string): Promise<void> => {
+// Submits a password reset request for admin approval. The backend validates
+// the email against the Supabase users table and holds the new password
+// (encrypted) in password_reset_requests until an admin approves it — nothing
+// changes in Firebase until then. Returns the backend's message to show.
+export const requestPasswordReset = async (
+  email: string,
+  newPassword: string,
+): Promise<string> => {
   const normalized = email.trim().toLowerCase();
-  let fallback = true;
-  try {
-    const res = await fetch("/api/auth/forgot-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: normalized }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.message || "Could not start the password reset. Try again.");
-    }
-    fallback = data.fallback !== false;
-  } catch (err: any) {
-    // Network failure — still try Firebase directly so the user isn't stuck.
-    console.warn("forgot-password endpoint failed, falling back to Firebase:", err);
+  const res = await fetch("/api/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: normalized, newPassword }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Could not submit the password reset. Please try again.");
   }
-  if (fallback) {
-    try {
-      await firebaseSendPasswordResetEmail(auth, normalized);
-    } catch (err: any) {
-      // Don't reveal whether the account exists.
-      if (err?.code !== "auth/user-not-found") {
-        console.warn("Firebase password reset failed:", err);
-      }
-    }
-  }
+  return (
+    data.message ||
+    "Your password reset request has been submitted and is awaiting admin approval."
+  );
 };
 
 export const loginUser = async (

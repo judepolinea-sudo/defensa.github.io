@@ -54,25 +54,43 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetShowPassword, setResetShowPassword] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSubmitted, setResetSubmitted] = useState(false);
+
+  const closeReset = () => {
+    setResetOpen(false);
+    setResetSubmitted(false);
+    setResetError(null);
+    setResetNewPassword("");
+    setResetConfirmPassword("");
+  };
 
   const handleForgotPassword = async (e: React.SyntheticEvent) => {
     e.preventDefault();
-    setResetMsg(null);
+    setResetError(null);
     const target = resetEmail.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
-      setResetMsg("Please enter a valid email address.");
+      setResetError("Please enter a valid email address.");
+      return;
+    }
+    if (resetNewPassword.length < 6) {
+      setResetError("The new password must be at least 6 characters.");
+      return;
+    }
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetError("The passwords do not match.");
       return;
     }
     setResetLoading(true);
     try {
-      await requestPasswordReset(target);
-      setResetMsg(
-        "If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.",
-      );
+      await requestPasswordReset(target, resetNewPassword);
+      setResetSubmitted(true);
     } catch (err: any) {
-      setResetMsg(err?.message || "Could not start the password reset. Please try again.");
+      setResetError(err?.message || "Could not submit the password reset. Please try again.");
     } finally {
       setResetLoading(false);
     }
@@ -417,9 +435,14 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
               <button
                 type="button"
                 onClick={() => {
-                  setResetEmail(email.trim());
-                  setResetMsg(null);
-                  setResetOpen((v) => !v);
+                  if (resetOpen) {
+                    closeReset();
+                  } else {
+                    setResetEmail(email.trim());
+                    setResetError(null);
+                    setResetSubmitted(false);
+                    setResetOpen(true);
+                  }
                 }}
                 className="text-sm font-semibold text-[#5b6ef5] hover:underline"
               >
@@ -435,48 +458,131 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                     : "bg-slate-50 border-slate-200"
                 }`}
               >
-                <p
-                  className={`text-xs ${isDarkPanel ? "text-slate-400" : "text-slate-500"}`}
-                >
-                  Enter the email for your account and we&apos;ll send a link to
-                  reset your password.
-                </p>
-                <div className="relative">
-                  <Mail
-                    className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
-                  />
-                  <input
-                    type="email"
-                    autoComplete="email"
-                    className={`w-full pl-10 pr-4 py-2.5 rounded-lg outline-none text-sm focus:ring-2 focus:ring-[#5b6ef5] ${
-                      isDarkPanel
-                        ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
-                        : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
-                    }`}
-                    placeholder="name@email.com"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                  />
-                </div>
-                {resetMsg && (
-                  <p
-                    className={`text-xs ${isDarkPanel ? "text-slate-300" : "text-slate-600"}`}
-                  >
-                    {resetMsg}
-                  </p>
+                {resetSubmitted ? (
+                  <div className="text-center py-2 space-y-2">
+                    <div className="mx-auto w-10 h-10 rounded-full bg-green-500/15 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5 text-green-500" />
+                    </div>
+                    <p
+                      className={`text-sm font-semibold ${isDarkPanel ? "text-white" : "text-slate-900"}`}
+                    >
+                      Reset request submitted
+                    </p>
+                    <p
+                      className={`text-xs ${isDarkPanel ? "text-slate-400" : "text-slate-500"}`}
+                    >
+                      An administrator will review your request and apply the new
+                      password. You&apos;ll be able to sign in with it once it is
+                      approved.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={closeReset}
+                      className="text-xs font-semibold text-[#5b6ef5] hover:underline"
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p
+                        className={`text-sm font-semibold ${isDarkPanel ? "text-white" : "text-slate-900"}`}
+                      >
+                        Reset password
+                      </p>
+                      <p
+                        className={`text-xs mt-0.5 ${isDarkPanel ? "text-slate-400" : "text-slate-500"}`}
+                      >
+                        Enter your account email and the new password you want.
+                        The change is applied after an administrator approves it.
+                      </p>
+                    </div>
+
+                    {resetError && (
+                      <p className="text-xs text-red-400">{resetError}</p>
+                    )}
+
+                    <div className="relative">
+                      <Mail
+                        className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
+                      />
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        className={`w-full pl-10 pr-4 py-2.5 rounded-lg outline-none text-sm focus:ring-2 focus:ring-[#5b6ef5] ${
+                          isDarkPanel
+                            ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
+                            : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
+                        }`}
+                        placeholder="name@email.com"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="relative">
+                      <Lock
+                        className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
+                      />
+                      <input
+                        type={resetShowPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        className={`w-full pl-10 pr-11 py-2.5 rounded-lg outline-none text-sm focus:ring-2 focus:ring-[#5b6ef5] ${
+                          isDarkPanel
+                            ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
+                            : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
+                        }`}
+                        placeholder="New password"
+                        value={resetNewPassword}
+                        onChange={(e) => setResetNewPassword(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setResetShowPassword((v) => !v)}
+                        aria-label={resetShowPassword ? "Hide password" : "Show password"}
+                        className={`absolute right-3.5 top-1/2 -translate-y-1/2 ${isDarkPanel ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600"}`}
+                      >
+                        {resetShowPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <Lock
+                        className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
+                      />
+                      <input
+                        type={resetShowPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        className={`w-full pl-10 pr-4 py-2.5 rounded-lg outline-none text-sm focus:ring-2 focus:ring-[#5b6ef5] ${
+                          isDarkPanel
+                            ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
+                            : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
+                        }`}
+                        placeholder="Confirm new password"
+                        value={resetConfirmPassword}
+                        onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={resetLoading}
+                      className="w-full py-2.5 bg-[#5b6ef5] hover:bg-[#4c5eea] disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {resetLoading ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        "Submit reset request"
+                      )}
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  disabled={resetLoading}
-                  className="w-full py-2.5 bg-[#5b6ef5] hover:bg-[#4c5eea] disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  {resetLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    "Send reset link"
-                  )}
-                </button>
               </div>
             )}
 

@@ -466,7 +466,7 @@ const DashboardView: React.FC<Props> = ({
                         </div>
                       </div>
                       <div className="p-8 bg-slate-50 dark:bg-slate-950 rounded-[32px] border border-slate-100 dark:border-slate-800">
-                        <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-4 leading-none">{project.title}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-4 leading-tight break-words [overflow-wrap:anywhere]">{project.title}</h3>
                         <div className="grid grid-cols-2 gap-4">
                           <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                             <TrendingUp className="w-5 h-5 text-blue-500" />
@@ -601,7 +601,7 @@ const DashboardView: React.FC<Props> = ({
                       <span className="px-3 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 rounded-full text-[10px] font-black uppercase tracking-widest">Active</span>
                       <button type="button" title="View project details" aria-label="View project details" className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-100"><ExternalLink className="w-5 h-5" /></button>
                     </div>
-                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-8 leading-none">{project.title}</h3>
+                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-8 leading-tight break-words [overflow-wrap:anywhere]">{project.title}</h3>
                     <div className="flex flex-col gap-3">
                       <div className="flex gap-4">
                         <motion.button onClick={onStartPractice} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl uppercase tracking-tighter text-sm shadow-lg shadow-blue-100" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>Practice</motion.button>
