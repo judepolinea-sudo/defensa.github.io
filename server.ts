@@ -735,7 +735,20 @@ export async function createApp() {
         enc_password: encryptRegPassword(newPassword),
         status: "PENDING",
       });
-      if (insErr) throw new Error(insErr.message);
+      if (insErr) {
+        // A missing table / column is a real server-side failure, not an
+        // enumeration signal — surface it instead of a false "submitted".
+        console.error("Forgot-password insert failed:", insErr);
+        const missing =
+          /relation .*password_reset_requests.* does not exist|Could not find the table/i.test(
+            insErr.message || "",
+          );
+        return res.status(500).json({
+          message: missing
+            ? "Password reset is not set up yet. Ask the administrator to run migration 014."
+            : "Could not submit the reset request. Please try again.",
+        });
+      }
 
       await logAudit(row.firebase_uid ?? null, "PASSWORD_RESET_REQUEST", "users", email, {
         email,
@@ -744,7 +757,9 @@ export async function createApp() {
       return res.json(GENERIC);
     } catch (error: any) {
       console.error("Forgot-password error:", error);
-      return res.json(GENERIC);
+      return res.status(500).json({
+        message: "Could not submit the reset request. Please try again.",
+      });
     }
   });
 
