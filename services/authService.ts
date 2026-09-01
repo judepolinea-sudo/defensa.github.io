@@ -3,6 +3,10 @@ import {
   signOut,
   onAuthStateChanged,
   getIdToken,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  sendPasswordResetEmail as firebaseSendPasswordResetEmail,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -62,7 +66,82 @@ async function resolveGoogleUser(firebaseUser: FirebaseUser): Promise<User> {
   }
 }
 
-export const loginUser = async (email: string, pass: string): Promise<User> => {
+const REMEMBER_KEY = "defensa.rememberMe";
+const REMEMBER_EMAIL_KEY = "defensa.rememberedEmail";
+
+// "Remember me" checked  -> browserLocalPersistence  (survives browser restart)
+// unchecked              -> browserSessionPersistence (cleared when the tab/browser closes)
+export const applyAuthPersistence = async (remember: boolean): Promise<void> => {
+  try {
+    await setPersistence(
+      auth,
+      remember ? browserLocalPersistence : browserSessionPersistence,
+    );
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(REMEMBER_KEY, remember ? "1" : "0");
+    }
+  } catch (err) {
+    console.warn("Could not set auth persistence:", err);
+  }
+};
+
+export const getRememberedLogin = (): { remember: boolean; email: string } => {
+  if (typeof window === "undefined") return { remember: true, email: "" };
+  return {
+    remember: window.localStorage.getItem(REMEMBER_KEY) !== "0",
+    email: window.localStorage.getItem(REMEMBER_EMAIL_KEY) ?? "",
+  };
+};
+
+export const setRememberedEmail = (email: string, remember: boolean): void => {
+  if (typeof window === "undefined") return;
+  if (remember && email) {
+    window.localStorage.setItem(REMEMBER_EMAIL_KEY, email);
+  } else {
+    window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
+  }
+};
+
+// Asks the backend to issue a password reset. The backend validates the email
+// against the Supabase users table and, when SMTP is configured, sends the
+// branded email itself; otherwise it returns fallback:true and we let Firebase
+// deliver its own reset email. The visible outcome is identical either way.
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  const normalized = email.trim().toLowerCase();
+  let fallback = true;
+  try {
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normalized }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || "Could not start the password reset. Try again.");
+    }
+    fallback = data.fallback !== false;
+  } catch (err: any) {
+    // Network failure — still try Firebase directly so the user isn't stuck.
+    console.warn("forgot-password endpoint failed, falling back to Firebase:", err);
+  }
+  if (fallback) {
+    try {
+      await firebaseSendPasswordResetEmail(auth, normalized);
+    } catch (err: any) {
+      // Don't reveal whether the account exists.
+      if (err?.code !== "auth/user-not-found") {
+        console.warn("Firebase password reset failed:", err);
+      }
+    }
+  }
+};
+
+export const loginUser = async (
+  email: string,
+  pass: string,
+  remember = true,
+): Promise<User> => {
+  await applyAuthPersistence(remember);
   const userCredential = await signInWithEmailAndPassword(auth, email, pass);
   const token = await getIdToken(userCredential.user);
   try {
@@ -108,11 +187,12 @@ const POPUP_UNAVAILABLE_CODES = [
 // popup.
 let inFlightGoogleLogin: Promise<User> | null = null;
 
-export const loginWithGoogle = (): Promise<User> => {
+export const loginWithGoogle = (remember = true): Promise<User> => {
   if (inFlightGoogleLogin) return inFlightGoogleLogin;
 
   inFlightGoogleLogin = (async () => {
     try {
+      await applyAuthPersistence(remember);
       const userCredential = await firebaseLoginWithGooglePopup();
       return await resolveGoogleUser(userCredential.user);
     } catch (err: any) {

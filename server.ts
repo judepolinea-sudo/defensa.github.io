@@ -9,7 +9,7 @@ import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { supabase, rowToProfile, profileToRow, logAudit } from "./lib/supabaseAdmin.ts";
-import { sendGoogleWelcomeEmail } from "./lib/email.ts";
+import { sendGoogleWelcomeEmail, sendPasswordResetEmail } from "./lib/email.ts";
 import {
   saveActiveSession,
   getActiveSession,
@@ -688,6 +688,147 @@ export async function createApp() {
     } catch (error: any) {
       console.error("Register error:", error);
       res.status(500).json({ message: error.message || "Registration failed. Please try again." });
+    }
+  });
+
+  // ===============================================================
+  // FORGOT PASSWORD
+  // Validates the address against the Supabase users table (the system of
+  // record), then issues a Firebase password-reset link. When SMTP is
+  // configured the branded email is sent from here; otherwise the client is
+  // told to fall back to Firebase's own delivery. The response is always
+  // generic so it never reveals whether an account exists.
+  // ===============================================================
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const GENERIC = {
+      message:
+        "If an account exists for that email, a password reset link has been sent.",
+    };
+    try {
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Please enter a valid email address." });
+      }
+
+      // Must be a real, active account in the system of record (Supabase).
+      const { data: row } = await supabase
+        .from("users")
+        .select("firebase_uid, full_name, is_deleted, status")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (!row || row.is_deleted === true || row.status === "PENDING" || row.status === "REJECTED") {
+        await logAudit(null, "PASSWORD_RESET_REQUEST", "users", email, { email, matched: false });
+        return res.json({ ...GENERIC, fallback: false });
+      }
+
+      let sent = false;
+      try {
+        const link = await auth.generatePasswordResetLink(email);
+        sent = await sendPasswordResetEmail({
+          to: email,
+          fullName: row.full_name ?? undefined,
+          resetLink: link,
+        });
+      } catch (e: any) {
+        console.warn("[forgot-password] link generation failed:", e?.message ?? e);
+      }
+
+      await logAudit(row.firebase_uid ?? null, "PASSWORD_RESET_REQUEST", "users", email, {
+        email,
+        matched: true,
+        emailedFromServer: sent,
+      });
+
+      // fallback:true => the client should call Firebase's sendPasswordResetEmail.
+      return res.json({ ...GENERIC, fallback: !sent });
+    } catch (error: any) {
+      console.error("Forgot-password error:", error);
+      // Still generic — don't leak internal failures as enumeration signal.
+      return res.json({ ...GENERIC, fallback: true });
+    }
+  });
+
+  // ===============================================================
+  // PRESENCE (who is online)
+  // The client posts { event } while the app is open. "login" stamps a fresh
+  // session start; "ping" keeps the session warm; "logout" clears it.
+  // ===============================================================
+
+  app.post("/api/presence", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+
+      const event = String(req.body?.event ?? "ping");
+      const now = new Date().toISOString();
+
+      let updates: Record<string, any>;
+      if (event === "logout") {
+        updates = { last_seen_at: null };
+      } else if (event === "login") {
+        // Only treat this as a new sign-in (stamping login time) when the user
+        // wasn't already active — a plain page refresh shouldn't reset it.
+        const { data: cur } = await supabase
+          .from("users")
+          .select("last_seen_at")
+          .eq("firebase_uid", caller.decoded.uid)
+          .maybeSingle();
+        const staleCutoff = Date.now() - 3 * 60_000;
+        const wasActive =
+          cur?.last_seen_at && new Date(cur.last_seen_at).getTime() > staleCutoff;
+        updates = wasActive
+          ? { last_seen_at: now }
+          : { last_login_at: now, last_seen_at: now };
+      } else {
+        updates = { last_seen_at: now };
+      }
+
+      await supabase.from("users").update(updates).eq("firebase_uid", caller.decoded.uid);
+      res.json({ ok: true });
+    } catch (error: any) {
+      // Presence is best-effort — never surface as a hard error to the client.
+      res.json({ ok: false });
+    }
+  });
+
+  // Admin view of currently-online users.
+  app.get("/api/admin/online-users", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Admin access required." });
+      }
+
+      const windowMinutes = 3;
+      const cutoff = new Date(Date.now() - windowMinutes * 60_000).toISOString();
+
+      const { data, error } = await supabase
+        .from("users")
+        .select("firebase_uid, email, full_name, role, program, year_level, last_login_at, last_seen_at")
+        .eq("is_deleted", false)
+        .gte("last_seen_at", cutoff)
+        .order("last_login_at", { ascending: false });
+
+      if (error) throw new Error(error.message);
+
+      const users = (data ?? []).map((u) => ({
+        id: u.firebase_uid,
+        email: u.email,
+        fullName: u.full_name,
+        role: u.role,
+        program: u.program ?? null,
+        yearLevel: u.year_level ?? null,
+        loginAt: u.last_login_at,
+        lastSeenAt: u.last_seen_at,
+      }));
+
+      res.json({ windowMinutes, count: users.length, users });
+    } catch (error: any) {
+      console.error("online-users error:", error);
+      res.status(500).json({ message: error.message || "Failed to load online users." });
     }
   });
 
@@ -2684,7 +2825,14 @@ export async function createApp() {
     }
   });
 
-  async function callOpenRouter(prompt: string, system?: string, maxTokens = 1200): Promise<string> {
+  // Bounds a single fetch so one slow provider can't stall the whole cascade.
+  function abortAfter(ms: number): { signal: AbortSignal; done: () => void } {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), ms);
+    return { signal: c.signal, done: () => clearTimeout(t) };
+  }
+
+  async function callOpenRouter(prompt: string, system?: string, maxTokens = 1200, timeoutMs = 30_000): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
 
@@ -2701,6 +2849,7 @@ export async function createApp() {
     messages.push({ role: "user", content: prompt });
 
     for (const model of models) {
+      const guard = abortAfter(timeoutMs);
       try {
         const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -2717,6 +2866,7 @@ export async function createApp() {
             temperature: 0.7,
             max_tokens: maxTokens,
           }),
+          signal: guard.signal,
         });
 
         if (resp.status === 429) { console.warn(`[OpenRouter] ${model} rate-limited`); continue; }
@@ -2731,12 +2881,14 @@ export async function createApp() {
         if (text) { console.log(`[AI] OpenRouter success: ${model}`); return text; }
       } catch (e: any) {
         console.warn(`[OpenRouter] ${model} error: ${e.message}`);
+      } finally {
+        guard.done();
       }
     }
     throw new Error("All OpenRouter models failed.");
   }
 
-  async function callGemini(prompt: string, maxTokens = 1200): Promise<string> {
+  async function callGemini(prompt: string, maxTokens = 1200, timeoutMs = 30_000): Promise<string> {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("GEMINI_API_KEY not set in environment");
 
@@ -2752,11 +2904,16 @@ export async function createApp() {
     for (const model of models) {
       if (authFailed) break;
       try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: { responseMimeType: "application/json", maxOutputTokens: maxTokens },
-        });
+        const response = await Promise.race([
+          ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: { responseMimeType: "application/json", maxOutputTokens: maxTokens },
+          }),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error(`Gemini ${model} timed out after ${timeoutMs}ms`)), timeoutMs),
+          ),
+        ]);
         const text = response.text ?? "";
         if (text) {
           console.log(`[AI] Gemini success: ${model}`);
@@ -2781,7 +2938,7 @@ export async function createApp() {
     throw new Error(authFailed ? "Gemini API key is invalid — falling back to Groq" : "All Gemini models failed.");
   }
 
-  async function callGroq(prompt: string, system?: string, maxTokens = 1200): Promise<string> {
+  async function callGroq(prompt: string, system?: string, maxTokens = 1200, timeoutMs = 30_000): Promise<string> {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
@@ -2791,6 +2948,7 @@ export async function createApp() {
     messages.push({ role: "user", content: prompt });
 
     for (const model of models) {
+      const guard = abortAfter(timeoutMs);
       try {
         const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -2805,6 +2963,7 @@ export async function createApp() {
             temperature: 0.7,
             max_tokens: maxTokens,
           }),
+          signal: guard.signal,
         });
 
         if (resp.status === 429) { console.warn(`[Groq] ${model} rate-limited`); continue; }
@@ -2815,6 +2974,8 @@ export async function createApp() {
         if (text) { console.log(`[AI] Groq success: ${model}`); return text; }
       } catch (e: any) {
         console.warn(`[Groq] ${model} error: ${e.message}`);
+      } finally {
+        guard.done();
       }
     }
     throw new Error("All Groq models failed.");
@@ -2836,11 +2997,14 @@ export async function createApp() {
       // providers (Groq LPU first, hosted Flash next) and only fall back to the
       // slower local model last. Non-fast (evaluation/reports) keeps the
       // cost-first order: free local model → OpenRouter → Gemini → Groq.
+      // On the interactive (fast) path, bound each provider tightly so a slow or
+      // stalled provider is abandoned quickly and the cascade moves on.
+      const netTimeout = fast ? 12_000 : 30_000;
       const runners: Record<string, () => Promise<string>> = {
         OwnAI: () => callOwnAI(prompt, system, fast ? 9_000 : 15_000),
-        OpenRouter: () => callOpenRouter(prompt, system, cap),
-        Gemini: () => callGemini(geminiPrompt, cap),
-        Groq: () => callGroq(prompt, system, cap),
+        OpenRouter: () => callOpenRouter(prompt, system, cap, netTimeout),
+        Gemini: () => callGemini(geminiPrompt, cap, netTimeout),
+        Groq: () => callGroq(prompt, system, cap, netTimeout),
       };
       const order = fast
         ? ["Groq", "Gemini", "OpenRouter", "OwnAI"]

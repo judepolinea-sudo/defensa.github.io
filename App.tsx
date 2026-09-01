@@ -11,7 +11,6 @@ import SessionConfigView from "./views/Session/SessionConfigView";
 import PracticeSessionView from "./views/Session/PracticeSessionView";
 import SessionSummaryView from "./views/Session/SessionSummaryView";
 import ReadinessDashboardView from "./views/Dashboard/ReadinessDashboardView";
-import CustomCursor from "./components/ui/custom-cursor";
 import { ProjectProfile, SessionResult, User, UserRole } from "./types";
 import {
   subscribeToAuthChanges,
@@ -19,6 +18,7 @@ import {
   getSessionToken,
   checkGoogleRedirectResult,
 } from "./services/authService";
+import { startPresence, stopPresence } from "./services/presenceService";
 
 async function fetchGroupProject(
   token: string,
@@ -100,6 +100,7 @@ const App: React.FC = () => {
         const t = await getSessionToken();
         setToken(t);
         setCurrentView(getRoleView(currentUser.role));
+        startPresence();
 
         if (currentUser.role === UserRole.STUDENT) {
           // Load group project and session history in parallel from the backend API
@@ -122,6 +123,7 @@ const App: React.FC = () => {
         }
       } else {
         setUser(null);
+        stopPresence();
         // Don't yank the user off an auth screen when a sign-in attempt is
         // rejected server-side (e.g. a deleted/deactivated account): the
         // backend returns no profile, which lands here. Staying on LOGIN /
@@ -144,6 +146,7 @@ const App: React.FC = () => {
     const t = await getSessionToken();
     setToken(t);
     setCurrentView(getRoleView(userData.role));
+    startPresence();
   };
 
   // Remove the current project (and its abstract) so the student can set up a
@@ -210,6 +213,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      stopPresence();
       await logoutUser();
       setUser(null);
       setProject(null);
@@ -223,7 +227,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
-      <CustomCursor />
       {currentView === ViewState.LOADING && (
         <div className="flex items-center justify-center min-h-screen">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />

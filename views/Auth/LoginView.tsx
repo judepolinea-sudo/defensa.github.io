@@ -18,7 +18,21 @@ import {
   Award,
 } from "lucide-react";
 import { UserRole } from "../../types";
-import { loginUser, loginWithGoogle } from "../../services/authService";
+import {
+  loginUser,
+  loginWithGoogle,
+  getRememberedLogin,
+  setRememberedEmail,
+  requestPasswordReset,
+} from "../../services/authService";
+
+// Blocks copy / cut / paste on the sign-in fields.
+const blockClipboard = {
+  onCopy: (e: React.ClipboardEvent) => e.preventDefault(),
+  onCut: (e: React.ClipboardEvent) => e.preventDefault(),
+  onPaste: (e: React.ClipboardEvent) => e.preventDefault(),
+  onDrop: (e: React.DragEvent) => e.preventDefault(),
+};
 
 interface Props {
   onLogin: (userData: any) => void;
@@ -28,14 +42,41 @@ interface Props {
 }
 
 const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
-  const [email, setEmail] = useState("");
+  const rememberedLogin = getRememberedLogin();
+  const [email, setEmail] = useState(rememberedLogin.email);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(false);
+  const [remember, setRemember] = useState(rememberedLogin.remember);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+
+  const handleForgotPassword = async (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    setResetMsg(null);
+    const target = resetEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) {
+      setResetMsg("Please enter a valid email address.");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await requestPasswordReset(target);
+      setResetMsg(
+        "If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder.",
+      );
+    } catch (err: any) {
+      setResetMsg(err?.message || "Could not start the password reset. Please try again.");
+    } finally {
+      setResetLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +94,8 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
 
     setLoading(true);
     try {
-      const userData = await loginUser(trimmedEmail, password);
+      const userData = await loginUser(trimmedEmail, password, remember);
+      setRememberedEmail(trimmedEmail, remember);
       onLogin(userData);
     } catch (err: any) {
       console.error("Login error:", err);
@@ -100,7 +142,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
     setGoogleLoading(true);
     setError(null);
     try {
-      const userData = await loginWithGoogle();
+      const userData = await loginWithGoogle(remember);
       onLogin(userData);
     } catch (err: any) {
       console.error("Google login error:", err);
@@ -313,6 +355,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                   placeholder="name@nu-clark.edu.ph"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  {...blockClipboard}
                 />
               </div>
             </div>
@@ -341,6 +384,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  {...blockClipboard}
                 />
                 <button
                   type="button"
@@ -373,11 +417,69 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
               </label>
               <button
                 type="button"
+                onClick={() => {
+                  setResetEmail(email.trim());
+                  setResetMsg(null);
+                  setResetOpen((v) => !v);
+                }}
                 className="text-sm font-semibold text-[#5b6ef5] hover:underline"
               >
                 Forgot password?
               </button>
             </div>
+
+            {resetOpen && (
+              <div
+                className={`rounded-xl border p-4 space-y-3 ${
+                  isDarkPanel
+                    ? "bg-[#1c2130] border-white/10"
+                    : "bg-slate-50 border-slate-200"
+                }`}
+              >
+                <p
+                  className={`text-xs ${isDarkPanel ? "text-slate-400" : "text-slate-500"}`}
+                >
+                  Enter the email for your account and we&apos;ll send a link to
+                  reset your password.
+                </p>
+                <div className="relative">
+                  <Mail
+                    className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
+                  />
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-lg outline-none text-sm focus:ring-2 focus:ring-[#5b6ef5] ${
+                      isDarkPanel
+                        ? "bg-[#141824] border border-white/10 text-white placeholder:text-slate-500"
+                        : "bg-white border border-slate-200 text-slate-900 placeholder:text-slate-400"
+                    }`}
+                    placeholder="name@nu-clark.edu.ph"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                  />
+                </div>
+                {resetMsg && (
+                  <p
+                    className={`text-xs ${isDarkPanel ? "text-slate-300" : "text-slate-600"}`}
+                  >
+                    {resetMsg}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading}
+                  className="w-full py-2.5 bg-[#5b6ef5] hover:bg-[#4c5eea] disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {resetLoading ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "Send reset link"
+                  )}
+                </button>
+              </div>
+            )}
 
             <button
               type="submit"

@@ -220,7 +220,7 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
 
         <div className="max-w-6xl mx-auto flex flex-col items-center text-center relative z-10">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-full text-blue-600 text-xs font-black uppercase tracking-widest mb-10 animate-pulse">
-            <Zap className="w-4 h-4" /> Trusted Viva Intelligence
+            <Zap className="w-4 h-4" /> AI Viva Intelligence
           </div>
 
           <h1 className="text-6xl md:text-8xl lg:text-9xl font-black tracking-tighter mb-8 leading-[0.85] text-slate-900">

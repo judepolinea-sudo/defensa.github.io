@@ -83,6 +83,19 @@ const ROLE_BADGE: Record<string, string> = {
     "border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950",
 };
 
+function relativeTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const then = new Date(iso).getTime();
+  if (isNaN(then)) return "—";
+  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (secs < 10) return "just now";
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  return `${hrs}h ago`;
+}
+
 const pageVariants = {
   hidden: { opacity: 0 },
   visible: {
@@ -240,6 +253,34 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       setLoading(false);
     }
   }, [token]);
+
+  const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
+  const [onlineLoading, setOnlineLoading] = useState(false);
+
+  const fetchOnlineUsers = useCallback(async () => {
+    if (!token) return;
+    setOnlineLoading(true);
+    try {
+      const res = await fetch("/api/admin/online-users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setOnlineUsers(Array.isArray(data.users) ? data.users : []);
+    } catch {
+      /* non-fatal — presence list just stays as-is */
+    } finally {
+      setOnlineLoading(false);
+    }
+  }, [token]);
+
+  // Poll the online-users list while the System Health tab is open.
+  useEffect(() => {
+    if (activeTab !== "health") return;
+    fetchOnlineUsers();
+    const id = setInterval(fetchOnlineUsers, 30_000);
+    return () => clearInterval(id);
+  }, [activeTab, fetchOnlineUsers]);
 
   useEffect(() => {
     if (activeTab === "users") fetchUsers();
@@ -703,6 +744,107 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                   </motion.div>
                 ))}
               </div>
+
+              <motion.div
+                variants={itemVariants}
+                className="bg-white dark:bg-slate-900 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden mb-12"
+              >
+                <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                    </span>
+                    <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                      Online Now
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 text-[10px] font-black">
+                      {onlineUsers.length}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchOnlineUsers}
+                    title="Refresh online users"
+                    aria-label="Refresh online users"
+                    className="p-2 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                  >
+                    <RefreshCcw className={`w-4 h-4 ${onlineLoading ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-950/50 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">
+                        <th className="px-8 py-5">User</th>
+                        <th className="px-8 py-5">Role</th>
+                        <th className="px-8 py-5">Signed In</th>
+                        <th className="px-8 py-5">Last Active</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {onlineUsers.map((u, i) => (
+                        <motion.tr
+                          key={u.id}
+                          custom={i}
+                          variants={rowVariants}
+                          initial="hidden"
+                          animate="visible"
+                          className="hover:bg-slate-50 dark:hover:bg-slate-950/50 transition-all"
+                        >
+                          <td className="px-8 py-5">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`w-9 h-9 ${u.role === "ADMIN" ? "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200"} rounded-xl flex items-center justify-center font-black text-sm`}
+                              >
+                                {u.fullName?.[0] || "?"}
+                              </div>
+                              <div>
+                                <p className="font-black text-slate-800 dark:text-slate-100 leading-none mb-1 uppercase tracking-tighter text-sm">
+                                  {u.fullName}
+                                </p>
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
+                                  {u.email}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <span
+                              className={`px-2 py-1 rounded text-[10px] font-black tracking-widest border uppercase ${ROLE_BADGE[u.role] ?? "border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400"}`}
+                            >
+                              {USER_ROLE_LABELS[u.role as UserRole] ?? u.role}
+                            </span>
+                          </td>
+                          <td className="px-8 py-5 text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {u.loginAt && !isNaN(new Date(u.loginAt).getTime())
+                              ? new Date(u.loginAt).toLocaleString(undefined, {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })
+                              : "—"}
+                          </td>
+                          <td className="px-8 py-5 text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {relativeTime(u.lastSeenAt)}
+                          </td>
+                        </motion.tr>
+                      ))}
+                      {onlineUsers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="px-8 py-16 text-center text-slate-400 dark:text-slate-500 font-bold"
+                          >
+                            {onlineLoading ? "Checking…" : "No users online right now."}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <motion.div

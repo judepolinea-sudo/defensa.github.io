@@ -1033,11 +1033,11 @@ export const generateDynamicQuestion = async (
   let docChunk: string;
   if (ragChunks.length > 0) {
     const query = `${targetSection} ${lastQuestion} ${lastAnswer}`.trim() || targetSection;
-    const hits = retrieveRelevantChunksImproved(query, ragChunks, 6);
+    const hits = retrieveRelevantChunksImproved(query, ragChunks, 4);
     const picked = (hits.length > 0 ? hits : ragChunks).map((c) => c.text).join("\n");
-    docChunk = picked.substring(0, 3200);
+    docChunk = picked.substring(0, 1800);
   } else {
-    docChunk = abstract.substring(0, 3200);
+    docChunk = abstract.substring(0, 1800);
   }
 
   const pool = panelists.length > 0 ? panelists : PANELISTS;
@@ -1096,7 +1096,7 @@ Return ONLY this JSON:
 {"question":"...","source_section":"${targetSection}","source_excerpt":"exact phrase from the document, max 100 chars","difficulty":"${adaptiveDifficulty}","question_type":"Clarification|Methodology Defense|Design Justification|Literature Validation|Limitation Analysis|Assumption Challenge|Data Integrity|Security|Scalability|Future Improvements","reason":"1 sentence","panelist_name":"${panelist.name}","expectedKeywords":["6-8 terms taken from the document for ${targetSection}"]}`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 700 });
+    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 450, timeoutMs: 15_000 });
     const parsed = parseAIJson(raw);
     if (!parsed.question) throw new Error("Missing question field");
     return {
@@ -1627,7 +1627,7 @@ JUDGE OUTPUT — Return ONLY this JSON:
   }
 }`;
 
-    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 1100 });
+    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 900, timeoutMs: 20_000 });
     const parsed = parseAIJson(raw);
 
     // Hard clamp: keyboard-mashing and "I don't know" can never earn points,
@@ -1678,9 +1678,38 @@ export interface SatisfactionResult {
 
 const SAT_THRESHOLD = 75;
 
+const STOP = new Set([
+  "the","a","an","is","are","was","were","this","that","these","those","which","with","for",
+  "and","or","but","not","in","on","at","to","of","has","have","been","by","as","its","be",
+  "their","they","from","into","will","can","may","also","more","than","such","about","after",
+  "before","between","each","both","all","some","any","when","where","while","study","research",
+  "paper","work","using","used","based","system","data","results","findings","analysis","approach",
+  "method","methods","our","we","it","because","therefore","however","would","should","could",
+  "does","did","how","what","why","who","your","you",
+]);
+
+// How much of the answer's substantive vocabulary actually appears in the
+// student's own document. Low overlap = the answer is not grounded in the file.
+function documentGrounding(answer: string, sourceText: string): number {
+  const src = (sourceText || "").toLowerCase();
+  if (!src) return 0.5; // no document to check against — stay neutral
+  const terms = [
+    ...new Set(
+      (answer.toLowerCase().match(/\b[a-z][a-z-]{3,}\b/g) || []).filter((w) => !STOP.has(w)),
+    ),
+  ];
+  if (terms.length === 0) return 0;
+  const hits = terms.filter((t) => src.includes(t.slice(0, 6))).length;
+  return hits / terms.length;
+}
+
 // Offline / parse-failure satisfaction scorer. Rejects non-substantive answers
-// outright and gives a rough, honest score to real ones.
-function localSatisfaction(rootQuestion: string, latestAnswer: string): SatisfactionResult {
+// outright, and marks down answers that are not grounded in the document.
+function localSatisfaction(
+  rootQuestion: string,
+  latestAnswer: string,
+  sourceText = "",
+): SatisfactionResult {
   if (looksLikeGibberish(latestAnswer) || isNonAnswer(latestAnswer)) {
     return {
       satisfaction_score: 6,
@@ -1694,25 +1723,44 @@ function localSatisfaction(rootQuestion: string, latestAnswer: string): Satisfac
   const words = latestAnswer.trim().split(/\s+/).filter(Boolean);
   const qWords = rootQuestion.toLowerCase().split(/\W+/).filter((w) => w.length > 3);
   const lc = latestAnswer.toLowerCase();
-  const overlap = qWords.length
+  const qOverlap = qWords.length
     ? qWords.filter((w) => lc.includes(w)).length / qWords.length
     : 0;
+  const grounding = documentGrounding(latestAnswer, sourceText);
   const hasSpecifics =
     /\b\d/.test(latestAnswer) ||
     /for example|such as|because|method|methodology|data|result|finding|survey|respondent|sample|analysis/i.test(latestAnswer);
-  let score = 22 + Math.min(words.length, 70) * 0.4 + overlap * 28 + (hasSpecifics ? 10 : 0);
-  score = Math.round(Math.max(12, Math.min(82, score)));
+
+  let score =
+    16 +
+    Math.min(words.length, 70) * 0.35 +
+    qOverlap * 22 +
+    grounding * 34 +
+    (hasSpecifics ? 8 : 0);
+
+  // An answer that barely matches the document cannot be "satisfying" no matter
+  // how fluent or long it is.
+  if (grounding < 0.2) score = Math.min(score, 38);
+  else if (grounding < 0.35) score = Math.min(score, 58);
+
+  score = Math.round(Math.max(10, Math.min(88, score)));
   const satisfied = score >= SAT_THRESHOLD;
   return {
     satisfaction_score: score,
     verdict: satisfied ? "satisfied" : "needs_followup",
-    gaps: satisfied ? [] : ["The answer needs more specifics grounded in your research."],
+    gaps: satisfied
+      ? []
+      : grounding < 0.35
+        ? ["The answer is not clearly grounded in your document. Tie it to what your study actually reports."]
+        : ["The answer needs more specifics grounded in your research."],
     followup_question: satisfied
       ? null
-      : "Go further. Support that with a concrete example or finding from your study.",
+      : grounding < 0.35
+        ? "Connect that to your document. What does your own study actually say about this?"
+        : "Go further. Support that with a concrete example or finding from your study.",
     panelist_remark: satisfied
       ? "Alright, that addresses it."
-      : "I need more detail from you on that.",
+      : "I need more detail from you on that, tied to your research.",
   };
 }
 
@@ -1782,7 +1830,7 @@ Return ONLY valid JSON — no markdown, no explanation:
 }`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 650 });
+    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 400, timeoutMs: 15_000 });
     const parsed = parseAIJson(raw) as SatisfactionResult;
 
     // Enforce force-close regardless of what AI returned
@@ -1810,6 +1858,27 @@ Return ONLY valid JSON — no markdown, no explanation:
       }
     }
 
+    // Document-grounding clamp: a small model will happily reward a confident,
+    // fluent answer that has nothing to do with the student's actual paper.
+    // If the answer barely overlaps the document, it cannot be "satisfying".
+    if (!forceClose && abstract && abstract.trim().length > 40 && !looksLikeGibberish(latestAnswer) && !isNonAnswer(latestAnswer)) {
+      const grounding = documentGrounding(latestAnswer, abstract);
+      if (grounding < 0.15) {
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 40);
+        parsed.verdict = 'needs_followup';
+        if (!parsed.followup_question) {
+          parsed.followup_question =
+            "Connect that to your document. What does your own study actually say about this?";
+        }
+        if (!parsed.gaps || parsed.gaps.length === 0) {
+          parsed.gaps = ["The answer is not clearly grounded in your document."];
+        }
+      } else if (grounding < 0.3) {
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 62);
+        if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
+      }
+    }
+
     // Ensure verdict matches score if AI was inconsistent
     if (!forceClose && parsed.satisfaction_score >= 75 && parsed.verdict !== 'satisfied') {
       parsed.verdict = 'satisfied';
@@ -1821,7 +1890,7 @@ Return ONLY valid JSON — no markdown, no explanation:
 
     return parsed;
   } catch {
-    const local = localSatisfaction(rootQuestion, latestAnswer);
+    const local = localSatisfaction(rootQuestion, latestAnswer, abstract);
     if (forceClose) {
       return {
         ...local,
