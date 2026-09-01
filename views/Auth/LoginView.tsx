@@ -39,15 +39,36 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError(null);
 
+    const trimmedEmail = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Please enter a valid email address, for example name@nu-clark.edu.ph.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const userData = await loginUser(email, password);
+      const userData = await loginUser(trimmedEmail, password);
       onLogin(userData);
     } catch (err: any) {
       console.error("Login error:", err);
       if (
+        err.code === "auth/invalid-email" ||
+        err.code === "auth/missing-email"
+      ) {
+        setError("Please enter a valid email address.");
+      } else if (err.code === "auth/missing-password") {
+        setError("Please enter your password.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many attempts. Wait a few minutes and try again, or reset your password.");
+      } else if (err.code === "auth/network-request-failed") {
+        setError("Network error. Check your connection and try again.");
+      } else if (
         err.code === "auth/user-not-found" ||
         err.code === "auth/wrong-password" ||
         err.code === "auth/invalid-credential"
@@ -66,7 +87,9 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
           "Your registration was not approved. Contact your administrator.",
         );
       } else {
-        setError(err.message || "Login failed. Please try again.");
+        const raw = String(err?.message || "");
+        const clean = raw.replace(/^Firebase:\s*/i, "").replace(/\s*\(auth\/[^)]+\)\.?$/i, "");
+        setError(clean || "Login failed. Please try again.");
       }
     } finally {
       setLoading(false);

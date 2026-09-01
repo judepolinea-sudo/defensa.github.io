@@ -1,12 +1,13 @@
 ﻿
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, CheckCircle, Loader2, Info, AlertCircle, X, FolderOpen, Sparkles, BookOpen } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Loader2, Info, AlertCircle, X, FolderOpen, Sparkles, BookOpen, ChevronLeft } from 'lucide-react';
 import { ProjectProfile } from '../../types';
 import { analyzeAbstract } from '../../services/geminiService';
 
 interface Props {
   project: ProjectProfile | null;
   onComplete: (project: Partial<ProjectProfile>) => void;
+  onBack?: () => void;
 }
 
 const ALLOWED_TYPES = [
@@ -16,7 +17,7 @@ const ALLOWED_TYPES = [
 const ALLOWED_EXTENSIONS = ['.pdf', '.docx'];
 const MAX_SIZE_BYTES = 30 * 1024 * 1024;
 
-const AbstractUploadView: React.FC<Props> = ({ project, onComplete }) => {
+const AbstractUploadView: React.FC<Props> = ({ project, onComplete, onBack }) => {
   const [step, setStep] = useState<'upload' | 'processing' | 'result'>('upload');
   const [uploadMode, setUploadMode] = useState<'single' | 'folder'>('single');
   const [progress, setProgress] = useState(0);
@@ -191,6 +192,16 @@ const AbstractUploadView: React.FC<Props> = ({ project, onComplete }) => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col p-4 md:p-10">
       <div className="max-w-3xl mx-auto w-full">
+
+        {onBack && step !== 'processing' && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mb-4 flex items-center gap-2 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors font-bold text-sm"
+          >
+            <ChevronLeft className="w-4 h-4" /> Back to Dashboard
+          </button>
+        )}
 
         {step === 'upload' && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 shadow-sm border border-slate-200 dark:border-slate-800 text-center">

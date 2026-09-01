@@ -345,6 +345,7 @@ const App: React.FC = () => {
       {currentView === ViewState.ABSTRACT_UPLOAD && (
         <AbstractUploadView
           project={project}
+          onBack={() => setCurrentView(ViewState.STUDENT_DASHBOARD)}
           onComplete={async (p) => {
             try {
               const isCreate = !project?.id;
