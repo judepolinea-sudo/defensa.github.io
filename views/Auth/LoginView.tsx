@@ -26,7 +26,7 @@ import {
   requestPasswordReset,
 } from "../../services/authService";
 
-// Blocks copy / cut / paste on the sign-in fields.
+// Blocks copy / cut / paste on the password field.
 const blockClipboard = {
   onCopy: (e: React.ClipboardEvent) => e.preventDefault(),
   onCut: (e: React.ClipboardEvent) => e.preventDefault(),
@@ -355,7 +355,6 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                   placeholder="name@nu-clark.edu.ph"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  {...blockClipboard}
                 />
               </div>
             </div>
