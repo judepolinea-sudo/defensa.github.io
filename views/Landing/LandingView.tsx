@@ -21,7 +21,6 @@ import {
 // Demo video for the landing page's "Institutional Demo" button.
 // A local file at defensa-new/public/, or a YouTube/Vimeo embed URL.
 const DEMO_VIDEO_URL = "/tutorial.mp4";
-import PricingSection from "@/components/ui/pricing-section-4";
 import { GradientCard } from "@/components/ui/gradient-card";
 
 import { UserRole } from "../../types";
@@ -33,14 +32,13 @@ interface Props {
 const NAV_LINKS = [
   { id: "home", label: "Home" },
   { id: "how-to", label: "How To" },
-  { id: "pricing", label: "Pricing" },
+  { id: "faq", label: "FAQ" },
 ] as const;
 
 // Exact background colours of the landing sections, so a WavySeam can paint
 // each side up to the wave and blend seamlessly into the real section bg.
 const SEAM_LIGHT = "#eff6ff"; // Tailwind blue-50  (hero, workflow, FAQ)
 const SEAM_DARK = "#020617"; // Tailwind slate-950 (benefits, CTA)
-const SEAM_DARK_ALT = "#0f172a"; // Tailwind slate-900 (pricing)
 
 const SEAM_WAVE = `M0 60 q 120 -80 240 0 ${"t 240 0 ".repeat(4)}`;
 
@@ -343,8 +341,6 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
       <section id="how-to" className="relative py-32 px-6 bg-blue-50 scroll-mt-28">
         {/* benefits (dark) → workflow (light) */}
         <WavySeam topColor={SEAM_DARK} bottomColor={SEAM_LIGHT} />
-        {/* workflow (light) → pricing (dark) — hosted here since pricing is overflow-hidden */}
-        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK_ALT} edge="bottom" />
 
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-24">
@@ -402,13 +398,8 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
         </div>
       </section>
 
-      {/* Pricing / Access Section */}
-      <PricingSection />
-
       {/* FAQ Section */}
-      <section className="relative py-32 px-6 bg-blue-50">
-        {/* pricing (dark) → FAQ (light) */}
-        <WavySeam topColor={SEAM_DARK_ALT} bottomColor={SEAM_LIGHT} />
+      <section id="faq" className="relative py-32 px-6 bg-blue-50 scroll-mt-28">
         {/* FAQ (light) → CTA (dark) — hosted here since the CTA is overflow-hidden */}
         <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK} edge="bottom" />
 

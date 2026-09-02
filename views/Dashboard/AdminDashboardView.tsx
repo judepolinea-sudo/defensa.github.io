@@ -1,7 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Shield,
   Users,
   Activity,
   Settings,
@@ -36,7 +35,7 @@ import {
   Trash2,
   AlertTriangle,
 } from "lucide-react";
-import { User, UserRole, USER_ROLE_LABELS } from "../../types";
+import { User, UserRole, USER_ROLE_LABELS, SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -170,12 +169,15 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   const [projectDeleteTarget, setProjectDeleteTarget] = useState<any | null>(null);
 
   const [newUser, setNewUser] = useState({
-    fullName: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
     email: "",
     password: "",
     role: UserRole.STUDENT as UserRole,
     program: "",
     yearLevel: "",
+    school: DEFAULT_SCHOOL,
   });
 
   const fetchUsers = useCallback(async () => {
@@ -314,8 +316,14 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   }, [fetchPendingRequests, fetchResetRequests]);
 
   const handleAddUser = async () => {
+    const fullName = joinName(
+      newUser.firstName,
+      newUser.middleName,
+      newUser.lastName,
+    );
     if (
-      !newUser.fullName ||
+      !newUser.firstName.trim() ||
+      !newUser.lastName.trim() ||
       !newUser.email ||
       !newUser.password ||
       !newUser.role
@@ -335,18 +343,29 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify({
+          fullName,
+          email: newUser.email,
+          password: newUser.password,
+          role: newUser.role,
+          program: newUser.program,
+          yearLevel: newUser.yearLevel,
+          school: newUser.school,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to create user");
       setIsAddUserOpen(false);
       setNewUser({
-        fullName: "",
+        firstName: "",
+        middleName: "",
+        lastName: "",
         email: "",
         password: "",
         role: UserRole.STUDENT,
         program: "",
         yearLevel: "",
+        school: DEFAULT_SCHOOL,
       });
       toast.success(`Account provisioned for ${newUser.email}`);
       fetchUsers();
@@ -635,8 +654,8 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
           transition={{ duration: 0.5 }}
           className="flex items-center gap-3 mb-12"
         >
-          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-600/20">
-            <Shield className="w-6 h-6" />
+          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+            <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
             <span className="text-xl font-black tracking-tight uppercase block leading-none">
@@ -1941,22 +1960,82 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                 Create a new institutional account.
               </p>
               <div className="space-y-5">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
-                    Legal Full Name *
-                  </label>
-                  <div className="relative">
-                    <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                      First Name *
+                    </label>
                     <input
                       type="text"
-                      className="w-full pl-12 pr-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
-                      placeholder="e.g. Dr. Jane Smith"
-                      value={newUser.fullName}
+                      className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
+                      placeholder="Jane"
+                      value={newUser.firstName}
                       onChange={(e) =>
-                        setNewUser({ ...newUser, fullName: e.target.value })
+                        setNewUser({ ...newUser, firstName: e.target.value })
                       }
                     />
                   </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                      Middle
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
+                      placeholder="—"
+                      value={newUser.middleName}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, middleName: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                      Last Name *
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
+                      placeholder="Smith"
+                      value={newUser.lastName}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, lastName: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                    Role *
+                  </label>
+                  <select
+                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
+                    value={newUser.role}
+                    onChange={(e) =>
+                      setNewUser({ ...newUser, role: e.target.value as UserRole })
+                    }
+                  >
+                    <option value={UserRole.STUDENT}>Student</option>
+                    <option value={UserRole.ADMIN}>Administrator</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                    School *
+                  </label>
+                  <select
+                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
+                    value={newUser.school}
+                    onChange={(e) =>
+                      setNewUser({ ...newUser, school: e.target.value })
+                    }
+                  >
+                    {SCHOOLS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">

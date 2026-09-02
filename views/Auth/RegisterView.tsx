@@ -6,7 +6,6 @@ import {
   User as UserIcon,
   ChevronLeft,
   Clock,
-  Mic,
   Eye,
   EyeOff,
   Sun,
@@ -18,8 +17,10 @@ import {
   UploadCloud,
   MessagesSquare,
   Award,
+  Building2,
 } from "lucide-react";
 import { registerUser } from "../../services/authService";
+import { SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 
 interface Props {
   onGoToLogin: () => void;
@@ -77,7 +78,7 @@ const BrandPanel: React.FC = () => (
   <div className="bg-gradient-to-br from-[#5b6ef5] to-[#1d4ed8] p-8 sm:p-10 flex flex-col justify-between gap-8">
     <div className="flex items-center gap-3">
       <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-        <Mic className="w-5 h-5 text-white" />
+        <ShieldCheck className="w-5 h-5 text-white" />
       </div>
       <div>
         <div className="text-lg font-extrabold text-white tracking-tight leading-none">
@@ -138,12 +139,15 @@ const BrandPanel: React.FC = () => (
 );
 
 const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [program, setProgram] = useState("");
   const [yearLevel, setYearLevel] = useState("");
+  const [school, setSchool] = useState(DEFAULT_SCHOOL);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -151,12 +155,20 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [submitted, setSubmitted] = useState(false);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setError(null);
 
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Please enter your first and last name.");
+      return;
+    }
     if (!email.trim().toLowerCase().endsWith("@nu-clark.edu.ph")) {
       setError("Only @nu-clark.edu.ph email accounts can sign up.");
+      return;
+    }
+    if (!school) {
+      setError("Please select your school.");
       return;
     }
     if (password.length < 6) {
@@ -173,9 +185,10 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       await registerUser({
         email,
         password,
-        fullName,
+        fullName: joinName(firstName, middleName, lastName),
         program: program || undefined,
         yearLevel: yearLevel || undefined,
+        school,
       });
       setSubmitted(true);
     } catch (err: any) {
@@ -208,9 +221,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
               Registration Submitted
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm">
-              Your account is waiting for admin approval. You&apos;ll be able to
-              log in once an administrator reviews and approves your
-              registration.
+              Your account is waiting for admin approval. Once approved, we&apos;ll
+              email you a verification link — open it, then you can sign in.
             </p>
             <button
               type="button"
@@ -286,21 +298,74 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
             )}
 
             <div>
-              <label htmlFor="reg-name" className={labelClass}>
-                Full Name
+              <label htmlFor="reg-first" className={labelClass}>
+                First Name
               </label>
               <div className="relative">
                 <UserIcon className={iconClass} />
                 <input
-                  id="reg-name"
+                  id="reg-first"
                   type="text"
                   required
-                  autoComplete="name"
+                  autoComplete="given-name"
                   className={fieldClass("pl-10 pr-4")}
-                  placeholder="Juan Dela Cruz"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Juan"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="reg-middle" className={labelClass}>
+                  Middle Name
+                </label>
+                <input
+                  id="reg-middle"
+                  type="text"
+                  autoComplete="additional-name"
+                  className={fieldClass("px-3")}
+                  placeholder="Optional"
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label htmlFor="reg-last" className={labelClass}>
+                  Last Name
+                </label>
+                <input
+                  id="reg-last"
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  className={fieldClass("px-3")}
+                  placeholder="Dela Cruz"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="reg-school" className={labelClass}>
+                School
+              </label>
+              <div className="relative">
+                <Building2 className={iconClass} />
+                <select
+                  id="reg-school"
+                  className={fieldClass("pl-10 pr-4")}
+                  value={school}
+                  onChange={(e) => setSchool(e.target.value)}
+                >
+                  {SCHOOLS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

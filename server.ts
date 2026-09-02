@@ -9,7 +9,7 @@ import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { supabase, rowToProfile, profileToRow, logAudit } from "./lib/supabaseAdmin.ts";
-import { sendGoogleWelcomeEmail } from "./lib/email.ts";
+import { sendGoogleWelcomeEmail, sendVerificationEmail } from "./lib/email.ts";
 import {
   saveActiveSession,
   getActiveSession,
@@ -197,6 +197,14 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   if (!error && row) {
     if (row.is_deleted === true) return null;
     if (row.status === "PENDING" || row.status === "REJECTED") return null;
+    // Email verification is mandatory for email/password accounts (admins are
+    // exempt — they are provisioned deliberately). Google identities are
+    // verified by Google.
+    const provider = decoded.firebase?.sign_in_provider;
+    if (row.role !== "ADMIN" && provider === "password" && decoded.email_verified === false) {
+      return null;
+    }
+    if (provider === "google.com" && decoded.email_verified === false) return null;
     return { decoded, profile: rowToProfile(row) };
   }
 
@@ -205,6 +213,7 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   // a separate, self-service path: any Google account gets an account
   // auto-provisioned as STUDENT on first login.
   if (decoded.firebase?.sign_in_provider !== "google.com") return null;
+  if (decoded.email_verified === false) return null;
 
   // Google sign-in works for any Google account. The @nu-clark.edu.ph rule
   // applies only to the email/password self-registration form.
@@ -269,6 +278,16 @@ export async function bootstrapAdmin() {
   try {
     const initialAdminEmail = process.env.INITIAL_ADMIN_EMAIL;
     if (!initialAdminEmail) return;
+
+    // The bootstrap admin should be an institution-owned mailbox, not a
+    // developer's personal webmail.
+    const FREE_WEBMAIL = /@(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|proton|protonmail|icloud|aol)\.[a-z.]+$/i;
+    if (FREE_WEBMAIL.test(initialAdminEmail)) {
+      console.warn(
+        `⚠️  INITIAL_ADMIN_EMAIL (${initialAdminEmail}) is a personal webmail address. ` +
+          `Set it to an institution-owned admin mailbox before going live.`,
+      );
+    }
 
     const { data: existingUsers } = await supabase
       .from("users")
@@ -542,6 +561,19 @@ export async function createApp() {
         });
       }
 
+      const provider = decoded.firebase?.sign_in_provider;
+      if (
+        row.role !== "ADMIN" &&
+        ((provider === "password" && decoded.email_verified === false) ||
+          (provider === "google.com" && decoded.email_verified === false))
+      ) {
+        return res.status(403).json({
+          message:
+            "Please verify your email address first. We sent a verification link to your inbox — open it, then sign in again.",
+          code: "EMAIL_NOT_VERIFIED",
+        });
+      }
+
       res.json({ user: rowToProfile(row) });
     } catch (error: any) {
       res.status(401).json({ message: error.message || "Invalid identity token" });
@@ -558,7 +590,7 @@ export async function createApp() {
       const caller = await verifyAndGetCaller(req.headers.authorization);
       if (!caller) return res.status(401).json({ message: "Unauthorized" });
 
-      const { fullName, program, yearLevel, avatar } = req.body ?? {};
+      const { fullName, program, yearLevel, school, avatar } = req.body ?? {};
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
       let newDisplayName: string | null = null;
@@ -580,6 +612,12 @@ export async function createApp() {
           return res.status(400).json({ message: "Year level is invalid." });
         }
         updates.year_level = typeof yearLevel === "string" && yearLevel.trim() ? yearLevel.trim() : null;
+      }
+      if (school !== undefined) {
+        if (school !== null && (typeof school !== "string" || school.length > 120)) {
+          return res.status(400).json({ message: "School is invalid or too long." });
+        }
+        updates.school = typeof school === "string" && school.trim() ? school.trim() : null;
       }
       if (avatar !== undefined) {
         if (
@@ -628,7 +666,7 @@ export async function createApp() {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, fullName, program, yearLevel } = req.body;
+      const { email, password, fullName, program, yearLevel, school } = req.body;
       if (!email || !password || !fullName) {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName",
@@ -669,6 +707,7 @@ export async function createApp() {
         full_name: fullName,
         program: program || null,
         year_level: yearLevel || null,
+        school: school || null,
         enc_password: encryptRegPassword(password),
       });
       if (error) {
@@ -873,6 +912,47 @@ export async function createApp() {
   });
 
   // ===============================================================
+  // RESEND EMAIL VERIFICATION
+  // For a signed-out user who registered but hasn't verified yet. Always
+  // returns a generic message so it can't be used to probe for accounts.
+  // ===============================================================
+
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    const GENERIC = {
+      message:
+        "If that email needs verification, a new verification link has been sent. Check your inbox and spam folder.",
+    };
+    try {
+      const email = String(req.body?.email ?? "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Please enter a valid email address." });
+      }
+      let record;
+      try {
+        record = await auth.getUserByEmail(email);
+      } catch {
+        return res.json(GENERIC);
+      }
+      if (record.emailVerified) return res.json(GENERIC);
+
+      try {
+        const link = await auth.generateEmailVerificationLink(email);
+        await sendVerificationEmail({
+          to: email,
+          fullName: record.displayName ?? undefined,
+          link,
+        });
+      } catch (e: any) {
+        console.warn("[resend-verification] failed:", e?.message ?? e);
+      }
+      return res.json(GENERIC);
+    } catch (error: any) {
+      console.error("Resend verification error:", error);
+      return res.json(GENERIC);
+    }
+  });
+
+  // ===============================================================
   // PRESENCE (who is online)
   // The client posts { event } while the app is open. "login" stamps a fresh
   // session start; "ping" keeps the session warm; "logout" clears it.
@@ -968,7 +1048,7 @@ export async function createApp() {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
       }
 
-      const { email: rawEmail, password, fullName, role, program, yearLevel } = req.body;
+      const { email: rawEmail, password, fullName, role, program, yearLevel, school } = req.body;
       if (!rawEmail || !password || !fullName || !role) {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName, role",
@@ -997,6 +1077,7 @@ export async function createApp() {
         role: normalizedRole,
         program: program || null,
         yearLevel: yearLevel || null,
+        school: school || null,
         isDeleted: false,
         createdBy: caller.decoded.uid,
       });
@@ -1247,11 +1328,13 @@ export async function createApp() {
 
       let userRecord;
       try {
+        // Not email-verified yet — the student must click the verification link
+        // before they can sign in (enforced in verifyAndGetCaller / /api/auth/me).
         userRecord = await auth.createUser({
           email: reqRow.email,
           password,
           displayName: reqRow.full_name,
-          emailVerified: true,
+          emailVerified: false,
         });
       } catch (createErr: any) {
         if (createErr.code === "auth/email-already-exists") {
@@ -1269,6 +1352,7 @@ export async function createApp() {
           role: "STUDENT",
           program: reqRow.program || null,
           yearLevel: reqRow.year_level || null,
+          school: reqRow.school || null,
           isDeleted: false,
           status: "APPROVED",
           createdBy: caller.decoded.uid,
@@ -1284,7 +1368,17 @@ export async function createApp() {
         email: reqRow.email,
       });
 
-      res.json({ message: `${reqRow.full_name} approved. They can now sign in.` });
+      // Send the email verification link (best-effort).
+      try {
+        const link = await auth.generateEmailVerificationLink(reqRow.email);
+        await sendVerificationEmail({ to: reqRow.email, fullName: reqRow.full_name, link });
+      } catch (e: any) {
+        console.warn("[approve] verification email failed:", e?.message ?? e);
+      }
+
+      res.json({
+        message: `${reqRow.full_name} approved. A verification email has been sent — they can sign in after verifying.`,
+      });
     } catch (error: any) {
       console.error("Approve registration error:", error);
       res.status(500).json({ message: error.message || "Server error" });
@@ -2133,6 +2227,59 @@ export async function createApp() {
     } catch (error: any) {
       console.error("Save session error:", error);
       res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // POST /api/sessions/:id/feedback — quick post-session survey
+  app.post("/api/sessions/:id/feedback", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+
+      const sessionId = req.params.id;
+      const { realism, difficulty, helpfulness, prepared, comment } = req.body ?? {};
+
+      const clampRating = (v: any): number | null => {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) && n >= 1 && n <= 5 ? n : null;
+      };
+      const preparedVal =
+        ["yes", "somewhat", "no"].includes(String(prepared)) ? String(prepared) : null;
+      const commentVal =
+        typeof comment === "string" && comment.trim()
+          ? comment.trim().slice(0, 2000)
+          : null;
+
+      // The session must belong to the caller (when it's a real session id).
+      let realSessionId: string | null = null;
+      if (sessionId && sessionId !== "unknown") {
+        const { data: sess } = await supabase
+          .from("defense_sessions")
+          .select("id, student_firebase_uid")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (sess && sess.student_firebase_uid !== caller.decoded.uid) {
+          return res.status(403).json({ message: "Not your session." });
+        }
+        realSessionId = sess?.id ?? null;
+      }
+
+      const { error } = await supabase.from("session_feedback").insert({
+        session_id: realSessionId,
+        student_firebase_uid: caller.decoded.uid,
+        realism_rating: clampRating(realism),
+        difficulty_rating: clampRating(difficulty),
+        helpfulness_rating: clampRating(helpfulness),
+        prepared: preparedVal,
+        comment: commentVal,
+      });
+      if (error) throw new Error(error.message);
+
+      await logAudit(caller.decoded.uid, "SESSION_FEEDBACK", "defense_sessions", realSessionId ?? undefined);
+      res.status(201).json({ message: "Thanks for the feedback." });
+    } catch (error: any) {
+      console.error("Session feedback error:", error);
+      res.status(500).json({ message: error.message || "Server error" });
     }
   });
 

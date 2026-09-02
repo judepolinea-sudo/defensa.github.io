@@ -3,7 +3,6 @@ import {
   LogIn,
   Mail,
   Lock,
-  Mic,
   Eye,
   EyeOff,
   Sun,
@@ -24,6 +23,7 @@ import {
   getRememberedLogin,
   setRememberedEmail,
   requestPasswordReset,
+  resendVerification,
 } from "../../services/authService";
 
 // Blocks copy / cut / paste on the password field.
@@ -51,6 +51,23 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
+
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+
+  const handleResendVerification = async () => {
+    setResendMsg(null);
+    setResendLoading(true);
+    try {
+      const msg = await resendVerification(email.trim());
+      setResendMsg(msg);
+    } catch (err: any) {
+      setResendMsg(err?.message || "Could not resend the verification email.");
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   const [resetOpen, setResetOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
@@ -111,13 +128,19 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
     }
 
     setLoading(true);
+    setNeedsVerification(false);
     try {
       const userData = await loginUser(trimmedEmail, password, remember);
       setRememberedEmail(trimmedEmail, remember);
       onLogin(userData);
     } catch (err: any) {
       console.error("Login error:", err);
-      if (
+      if (err.code === "EMAIL_NOT_VERIFIED") {
+        setNeedsVerification(true);
+        setError(
+          "Please verify your email first. Open the verification link we sent to your inbox, then sign in again.",
+        );
+      } else if (
         err.code === "auth/invalid-email" ||
         err.code === "auth/missing-email"
       ) {
@@ -172,6 +195,10 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
       } else if (err.code === "ACCOUNT_DEACTIVATED") {
         setError(
           "This account has been deactivated. Please contact your administrator.",
+        );
+      } else if (err.code === "EMAIL_NOT_VERIFIED") {
+        setError(
+          "Your Google account's email is not verified. Verify it with Google, then try again.",
         );
       } else {
         setError(err.message || "Google sign-in failed. Please try again.");
@@ -242,7 +269,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
         <div className="bg-gradient-to-br from-[#5b6ef5] to-[#1d4ed8] p-8 sm:p-10 flex flex-col justify-between gap-8">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-              <Mic className="w-5 h-5 text-white" />
+              <ShieldCheck className="w-5 h-5 text-white" />
             </div>
             <div>
               <div className="text-lg font-extrabold text-white tracking-tight leading-none">
@@ -346,6 +373,24 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                 role="alert"
               >
                 {error}
+              </div>
+            )}
+
+            {needsVerification && (
+              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-center space-y-2">
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendLoading}
+                  className="text-sm font-semibold text-amber-500 hover:underline disabled:opacity-60"
+                >
+                  {resendLoading ? "Sending…" : "Resend verification email"}
+                </button>
+                {resendMsg && (
+                  <p className={`text-xs ${isDarkPanel ? "text-slate-300" : "text-slate-600"}`}>
+                    {resendMsg}
+                  </p>
+                )}
               </div>
             )}
 

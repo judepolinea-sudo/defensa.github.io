@@ -147,6 +147,7 @@ export const registerUser = async (params: {
   fullName: string;
   program?: string;
   yearLevel?: string;
+  school?: string;
 }): Promise<void> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
@@ -157,6 +158,21 @@ export const registerUser = async (params: {
   if (!res.ok) {
     throw new Error(data.message || "Registration failed. Please try again.");
   }
+};
+
+// Asks the backend to re-send the email verification link for a signed-out
+// user. The response is deliberately generic.
+export const resendVerification = async (email: string): Promise<string> => {
+  const res = await fetch("/api/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Could not resend the verification email.");
+  }
+  return data.message || "Verification email sent. Check your inbox.";
 };
 
 // Popup-blocked or third-party-cookie-restricted environments (common on

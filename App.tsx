@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const [token, setToken] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectProfile | null>(null);
   const [lastSession, setLastSession] = useState<SessionResult | null>(null);
+  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const [sessionHistory, setSessionHistory] = useState<SessionResult[]>([]);
   const [sessionConfig, setSessionConfig] = useState<any>(null);
   const [dashboardTab, setDashboardTab] = useState<
@@ -209,7 +210,10 @@ const App: React.FC = () => {
             weakestCategory: (result as any).weakestCategory,
           }),
         });
-        if (!saveRes.ok) {
+        if (saveRes.ok) {
+          const body = await saveRes.json().catch(() => ({}));
+          if (body?.sessionId) setLastSessionId(body.sessionId);
+        } else {
           const body = await saveRes.text().catch(() => "");
           console.error(`[Session save] Server returned ${saveRes.status}:`, body);
         }
@@ -439,6 +443,8 @@ const App: React.FC = () => {
       {currentView === ViewState.SESSION_SUMMARY && lastSession && (
         <SessionSummaryView
           result={lastSession}
+          sessionId={lastSessionId}
+          token={token}
           onGoDashboard={() => openStudentDashboard("home")}
           onViewDetailed={() => setCurrentView(ViewState.READINESS_DASHBOARD)}
         />

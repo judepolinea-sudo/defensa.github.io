@@ -12,16 +12,60 @@ import { generateSessionEvalReport, SessionEvalReport } from '../../services/gem
 
 interface Props {
   result: SessionResult;
+  sessionId?: string | null;
+  token?: string | null;
   onGoDashboard: () => void;
   onViewDetailed: () => void;
 }
 
-const SessionSummaryView: React.FC<Props> = ({ result, onGoDashboard, onViewDetailed }) => {
+// Quick post-session survey. `key` is the field the backend expects.
+const SURVEY_QUESTIONS: { key: 'realism' | 'difficulty' | 'helpfulness'; label: string; low: string; high: string }[] = [
+  { key: 'realism', label: "How realistic did the panel's questions feel?", low: 'Not realistic', high: 'Just like a real defense' },
+  { key: 'difficulty', label: 'Was the difficulty level right for you?', low: 'Way off', high: 'Just right' },
+  { key: 'helpfulness', label: 'How helpful was the feedback you received?', low: 'Not helpful', high: 'Very helpful' },
+];
+
+const SessionSummaryView: React.FC<Props> = ({ result, sessionId, token, onGoDashboard, onViewDetailed }) => {
   const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [report, setReport] = useState<SessionEvalReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
+
+  const surveyStorageKey = `defensa.survey.${sessionId ?? result.id}`;
+  const [surveyRatings, setSurveyRatings] = useState<Record<string, number>>({});
+  const [surveyPrepared, setSurveyPrepared] = useState<'yes' | 'somewhat' | 'no' | ''>('');
+  const [surveyComment, setSurveyComment] = useState('');
+  const [surveySubmitting, setSurveySubmitting] = useState(false);
+  const [surveyDone, setSurveyDone] = useState(() => {
+    try { return localStorage.getItem(surveyStorageKey) === '1'; } catch { return false; }
+  });
+
+  const submitSurvey = async () => {
+    setSurveySubmitting(true);
+    try {
+      await fetch(`/api/sessions/${sessionId ?? 'unknown'}/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          realism: surveyRatings.realism ?? null,
+          difficulty: surveyRatings.difficulty ?? null,
+          helpfulness: surveyRatings.helpfulness ?? null,
+          prepared: surveyPrepared || null,
+          comment: surveyComment,
+        }),
+      });
+    } catch {
+      /* non-fatal — feedback is best-effort */
+    } finally {
+      try { localStorage.setItem(surveyStorageKey, '1'); } catch { /* ignore */ }
+      setSurveyDone(true);
+      setSurveySubmitting(false);
+    }
+  };
 
   const handleGenerateReport = async () => {
     setIsReportOpen(true);
@@ -105,6 +149,101 @@ const SessionSummaryView: React.FC<Props> = ({ result, onGoDashboard, onViewDeta
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest mb-1">Difficulty</p>
                 <p className="text-2xl font-black text-slate-800 dark:text-slate-100">Mid</p>
               </div>
+            </div>
+
+            {/* ── Quick feedback survey ─────────────────────────────── */}
+            <div className="mb-10 p-8 bg-slate-50 dark:bg-slate-950 rounded-[32px] border border-slate-100 dark:border-slate-800 text-left">
+              {surveyDone ? (
+                <div className="flex items-center gap-3 justify-center py-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  <p className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                    Thanks for the feedback — it helps us improve Defensa.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-center mb-6">
+                    <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] mb-1">30-second survey</p>
+                    <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">
+                      How was this session?
+                    </h3>
+                  </div>
+
+                  <div className="space-y-6">
+                    {SURVEY_QUESTIONS.map((q) => (
+                      <div key={q.key}>
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">{q.label}</p>
+                        <div className="flex items-center gap-2">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => setSurveyRatings((r) => ({ ...r, [q.key]: n }))}
+                              className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${
+                                surveyRatings[q.key] === n
+                                  ? 'bg-blue-600 text-white shadow-lg'
+                                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-blue-300'
+                              }`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-1 px-1">
+                          <span>{q.low}</span>
+                          <span>{q.high}</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                        Do you feel more prepared for your actual defense?
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {([['yes', 'Yes'], ['somewhat', 'Somewhat'], ['no', 'Not yet']] as const).map(([val, lbl]) => (
+                          <button
+                            key={val}
+                            type="button"
+                            onClick={() => setSurveyPrepared(val)}
+                            className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-tight transition-all ${
+                              surveyPrepared === val
+                                ? 'bg-blue-600 text-white shadow-lg'
+                                : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:border-blue-300'
+                            }`}
+                          >
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                        Anything else you&apos;d like us to know? <span className="font-medium text-slate-400">(optional)</span>
+                      </p>
+                      <textarea
+                        rows={2}
+                        value={surveyComment}
+                        onChange={(e) => setSurveyComment(e.target.value)}
+                        maxLength={2000}
+                        className="w-full p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                        placeholder="Your comments…"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={submitSurvey}
+                      disabled={surveySubmitting}
+                      className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase tracking-widest text-xs shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                      {surveySubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Submit feedback
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -343,11 +482,11 @@ const SessionSummaryView: React.FC<Props> = ({ result, onGoDashboard, onViewDeta
                           <div className="grid grid-cols-2 gap-6 mb-8">
                             <div>
                               <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-2">Relevance</p>
-                              <p className="text-xl font-black text-slate-800 dark:text-slate-100">{qa.feedback.semanticRelevance}%</p>
+                              <p className="text-xl font-black text-slate-800 dark:text-slate-100">{Math.round(qa.feedback.semanticRelevance || 0)}%</p>
                             </div>
                             <div>
                               <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-2">Confidence</p>
-                              <p className="text-xl font-black text-slate-800 dark:text-slate-100">{qa.feedback.confidenceLevel}%</p>
+                              <p className="text-xl font-black text-slate-800 dark:text-slate-100">{Math.round(qa.feedback.confidenceLevel || 0)}%</p>
                             </div>
                           </div>
                         </div>

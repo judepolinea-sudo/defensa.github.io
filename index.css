@@ -83,7 +83,7 @@ html {
   .animate-question-in { animation: none; }
 }
 
-/* Sparkles / pricing section color variables */
+/* Sparkles / gradient card color variables */
 :root {
   --sparkles-color: #2563eb;
   --gradient-color: #2563eb;

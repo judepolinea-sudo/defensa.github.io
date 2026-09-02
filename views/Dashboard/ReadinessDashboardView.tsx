@@ -483,12 +483,15 @@ const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession
                   <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-200 dark:border-slate-800 p-8">
                     <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-6">Category Breakdown</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {Object.entries(selectedSession.categoryScores).map(([cat, score]) => (
-                        <div key={cat} className="text-center">
-                          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{cat}</p>
-                          <p className={`text-2xl font-black ${score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600 dark:text-red-400'}`}>{score}%</p>
-                        </div>
-                      ))}
+                      {Object.entries(selectedSession.categoryScores).map(([cat, raw]) => {
+                        const score = Math.round(Number(raw) || 0);
+                        return (
+                          <div key={cat} className="text-center">
+                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">{cat}</p>
+                            <p className={`text-2xl font-black ${score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600 dark:text-red-400'}`}>{score}%</p>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

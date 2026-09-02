@@ -182,6 +182,35 @@ export enum Department {
   BSCpE = 'BSCpE',
 }
 
+// Schools / campuses a user can be connected to. Shown as a dropdown on the
+// registration form and the admin "Register User" form.
+export const SCHOOLS = [
+  'National University – Clark',
+  'National University – Manila',
+  'National University – Mall of Asia',
+  'National University – Laguna',
+  'National University – Fairview',
+  'National University – Baliwag',
+  'National University – Dasmariñas',
+  'National University – Lipa',
+  'National University – Bacolod',
+  'National University – Eastern Visayas',
+] as const;
+
+export const DEFAULT_SCHOOL = 'National University – Clark';
+
+// Joins the parts of a name into a single display string, dropping any blanks.
+export function joinName(
+  first: string,
+  middle: string,
+  last: string,
+): string {
+  return [first, middle, last]
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 export const TECH_STACK_OPTIONS = [
   'React', 'Vue.js', 'Angular', 'Next.js', 'Svelte',
   'Node.js', 'Express.js', 'Django', 'Flask', 'FastAPI', 'Laravel', 'Spring Boot', 'ASP.NET',
@@ -205,6 +234,7 @@ export interface User {
   // Free text — any program/department, not limited to the Department enum.
   program?: string;
   yearLevel?: string;
+  school?: string | null;
   avatar?: string | null;
   performance?: number[];
   project?: ProjectProfile;

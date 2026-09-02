@@ -497,12 +497,16 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     sessionCompletedRef.current = true;
     setUiState('finalizing');
     if (finalHistory.length === 0) { onExit(); return; }
-    const avg = finalHistory.reduce((a, h) => a + h.feedback.score, 0) / finalHistory.length;
+    const mean = (pick: (b: QuestionAnswer) => number) =>
+      Math.round(
+        finalHistory.reduce((a, b) => a + (pick(b) || 0), 0) / finalHistory.length,
+      );
+    const avg = mean((h) => h.feedback.score);
     const scoreMap = {
-      Accuracy:     finalHistory.reduce((a, b) => a + b.feedback.semanticRelevance, 0) / finalHistory.length,
-      Completeness: finalHistory.reduce((a, b) => a + b.feedback.keywordAccuracy, 0) / finalHistory.length,
-      Clarity:      finalHistory.reduce((a, b) => a + (b.feedback.clarity ?? 0), 0) / finalHistory.length,
-      Confidence:   finalHistory.reduce((a, b) => a + b.feedback.confidenceLevel, 0) / finalHistory.length,
+      Accuracy:     mean((b) => b.feedback.semanticRelevance),
+      Completeness: mean((b) => b.feedback.keywordAccuracy),
+      Clarity:      mean((b) => b.feedback.clarity ?? 0),
+      Confidence:   mean((b) => b.feedback.confidenceLevel),
     };
     const weakest = Object.entries(scoreMap).sort((a, b) => a[1] - b[1])[0][0];
     onComplete({
