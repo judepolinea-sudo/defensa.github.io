@@ -495,8 +495,8 @@ function localEvaluate(
   // aren't scored as if they were wrong.
   const accuracyRaw = wordCount < 10
     ? Math.max(25, Math.round(25 + keywordRatio * 25))
-    : Math.round(32 + keywordRatio * 35 + relevanceRatio * 15 + specificityBonus);
-  const accuracy = Math.min(95, accuracyRaw);
+    : Math.round(32 + keywordRatio * 38 + relevanceRatio * 18 + specificityBonus);
+  const accuracy = Math.max(0, Math.min(100, accuracyRaw));
 
   // === COMPLETENESS ===
   const sentences = answer.split(/[.!?]+/).filter((s) => s.trim().length > 8);
@@ -504,17 +504,17 @@ function localEvaluate(
   const hasMultiplePoints = sentences.length >= 3;
 
   // Word count contributes but is capped — no longer the sole driver
-  const wcBase = wordCount < 15 ? Math.round(wordCount * 2) : wordCount < 60 ? Math.round(38 + (wordCount - 15) * 0.7) : Math.min(70, 70);
-  const completenessBonus = (hasExamples ? 8 : 0) + (hasMultiplePoints ? 7 : 0) + Math.round(keywordRatio * 15);
-  const completeness = Math.min(95, wcBase + completenessBonus);
+  const wcBase = wordCount < 15 ? Math.round(wordCount * 2) : wordCount < 60 ? Math.round(38 + (wordCount - 15) * 0.75) : Math.min(78, 71 + Math.round((wordCount - 60) * 0.15));
+  const completenessBonus = (hasExamples ? 9 : 0) + (hasMultiplePoints ? 8 : 0) + Math.round(keywordRatio * 16);
+  const completeness = Math.max(0, Math.min(100, wcBase + completenessBonus));
 
   // === CLARITY ===
   const avgSentenceLen = wordCount / Math.max(sentences.length, 1);
   const wellPaced = avgSentenceLen >= 7 && avgSentenceLen <= 35;
   const hasConnectives = /therefore|because|however|additionally|furthermore|in contrast|as a result|consequently|moreover|thus|first|second|finally|in addition/i.test(answer);
 
-  const clarityBase = sentences.length < 1 ? 28 : !wellPaced ? 48 : sentences.length === 1 ? 58 : Math.min(78, 62 + sentences.length * 5);
-  const clarity = Math.min(90, clarityBase + (hasConnectives ? 8 : 0));
+  const clarityBase = sentences.length < 1 ? 28 : !wellPaced ? 48 : sentences.length === 1 ? 58 : Math.min(86, 62 + sentences.length * 6);
+  const clarity = Math.max(0, Math.min(100, clarityBase + (hasConnectives ? 10 : 0) + (wellPaced && hasMultiplePoints ? 4 : 0)));
 
   // === CONFIDENCE ===
   const strongFillers = (answer.match(/\b(uh|um|erm)\b/gi) || []).length;
@@ -535,9 +535,9 @@ function localEvaluate(
     wordCount < 15 || (relevanceRatio < 0.12 && keywordRatio < 0.15);
   if (thinAnswer) confidence = Math.min(confidence, 50);
 
-  const finalScore = Math.round(
+  const finalScore = Math.max(0, Math.min(100, Math.round(
     accuracy * 0.35 + completeness * 0.25 + clarity * 0.2 + confidence * 0.2,
-  );
+  )));
 
   // === FEEDBACK STRINGS ===
   const strengths: string[] = [];
@@ -1726,14 +1726,21 @@ JUDGE OUTPUT — Return ONLY this JSON:
       );
     }
 
-    // Enforce correct finalScore calculation regardless of what AI returned
-    const recalculated = Math.round(
-      (parsed.accuracy ?? 0) * 0.35 +
-        (parsed.completeness ?? 0) * 0.25 +
-        (parsed.clarity ?? 0) * 0.2 +
-        (parsed.confidence ?? 0) * 0.2,
+    // Every score the UI shows must be an integer in [0, 100]. Clamp each
+    // rubric dimension, then recompute finalScore from the clamped values so
+    // the weighted total is always consistent with its parts.
+    const clamp100 = (n: unknown) =>
+      Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
+    parsed.accuracy = clamp100(parsed.accuracy);
+    parsed.completeness = clamp100(parsed.completeness);
+    parsed.clarity = clamp100(parsed.clarity);
+    parsed.confidence = clamp100(parsed.confidence ?? confidenceScore);
+    parsed.finalScore = clamp100(
+      parsed.accuracy * 0.35 +
+        parsed.completeness * 0.25 +
+        parsed.clarity * 0.2 +
+        parsed.confidence * 0.2,
     );
-    parsed.finalScore = recalculated;
 
     return parsed;
   } catch (err) {
@@ -1840,22 +1847,25 @@ function localSatisfaction(
   const relevance = Math.max(qOverlap, grounding);
 
   let score =
-    14 +
-    Math.min(words.length, 90) * 0.30 +
-    qOverlap * 22 +
-    grounding * 24 +
+    12 +
+    Math.min(words.length, 100) * 0.32 +
+    qOverlap * 24 +
+    grounding * 26 +
     (hasSpecifics ? 12 : 0) +
-    (hasConnectives ? 5 : 0) +
-    (words.length >= 40 ? 6 : 0);
+    (hasConnectives ? 6 : 0) +
+    (words.length >= 40 ? 6 : 0) +
+    (/\b\d/.test(latestAnswer) ? 4 : 0);
 
-  // Relevance gates — an answer that doesn't engage the question at all can't
-  // score as "partial". These stay strict; the grounding caps below are gentle.
-  if (relevance < 0.08) score = Math.min(score, 14);
-  else if (relevance < 0.16) score = Math.min(score, 34);
-  else if (grounding < 0.12) score = Math.min(score, 52);
-  else if (grounding < 0.24) score = Math.min(score, 66);
+  // Relevance / grounding ceilings. These are continuous functions of the
+  // underlying signal, not fixed numbers — so two answers that differ in how
+  // well they engage the question or the paper get different scores instead of
+  // both being clipped to the same value.
+  if (relevance < 0.08) score = Math.min(score, 8 + relevance * 90);
+  else if (relevance < 0.16) score = Math.min(score, 20 + relevance * 95);
+  else if (grounding < 0.12) score = Math.min(score, 38 + grounding * 130);
+  else if (grounding < 0.24) score = Math.min(score, 54 + grounding * 70);
 
-  score = Math.round(Math.max(4, Math.min(95, score)));
+  score = Math.round(Math.max(0, Math.min(100, score)));
   const satisfied = score >= SAT_THRESHOLD;
   const weak = grounding < 0.28;
   const fu = [
@@ -1993,7 +2003,10 @@ Return ONLY valid JSON — no markdown, no explanation:
     if (!forceClose && !badAnswer && abstract && abstract.trim().length > 40) {
       const grounding = documentGrounding(latestAnswer, abstract);
       if (grounding < 0.1) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 40);
+        parsed.satisfaction_score = Math.min(
+          parsed.satisfaction_score,
+          Math.round(20 + grounding * 200),
+        );
         if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
         if (!parsed.followup_question) {
           parsed.followup_question =
@@ -2003,7 +2016,10 @@ Return ONLY valid JSON — no markdown, no explanation:
           parsed.gaps = ["The answer is not clearly grounded in your document."];
         }
       } else if (grounding < 0.22) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 66);
+        parsed.satisfaction_score = Math.min(
+          parsed.satisfaction_score,
+          Math.round(52 + grounding * 90),
+        );
         if (parsed.verdict === 'satisfied' && parsed.satisfaction_score < SAT_THRESHOLD) {
           parsed.verdict = 'needs_followup';
         }
