@@ -235,6 +235,7 @@ export interface User {
   program?: string;
   yearLevel?: string;
   school?: string | null;
+  phone?: string | null;
   avatar?: string | null;
   performance?: number[];
   project?: ProjectProfile;

@@ -5,7 +5,6 @@ import {
   Lock,
   User as UserIcon,
   ChevronLeft,
-  Clock,
   Eye,
   EyeOff,
   Sun,
@@ -27,7 +26,24 @@ interface Props {
   onBack: () => void;
 }
 
-const YEAR_LEVELS = ["3rd Year", "4th Year"];
+// Rough password-strength score (0-4) + label, for the meter on the form.
+function passwordStrength(pw: string): { score: number; label: string; color: string } {
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  score = Math.min(score, 4);
+  const table = [
+    { label: "Too weak", color: "bg-red-500" },
+    { label: "Weak", color: "bg-orange-500" },
+    { label: "Fair", color: "bg-amber-500" },
+    { label: "Good", color: "bg-lime-500" },
+    { label: "Strong", color: "bg-emerald-500" },
+  ];
+  return { score, ...table[score] };
+}
 
 const steps = [
   {
@@ -35,8 +51,8 @@ const steps = [
     icon: UploadCloud,
     iconBg: "bg-sky-400/20",
     iconColor: "text-sky-200",
-    title: "Upload Abstract",
-    desc: "Simply drag and drop your PDF or DOCX abstract. Our AI analyzes your methodology instantly.",
+    title: "Upload Manuscript",
+    desc: "Simply drag and drop your PDF or DOCX manuscript. Our AI analyzes your methodology instantly.",
   },
   {
     number: 2,
@@ -140,20 +156,21 @@ const BrandPanel: React.FC = () => (
 
 const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [firstName, setFirstName] = useState("");
-  const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [program, setProgram] = useState("");
-  const [yearLevel, setYearLevel] = useState("");
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
+  const [agree, setAgree] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
+
+  const strength = passwordStrength(password);
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -165,6 +182,11 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     }
     if (!email.trim().toLowerCase().endsWith("@nu-clark.edu.ph")) {
       setError("Only @nu-clark.edu.ph email accounts can sign up.");
+      return;
+    }
+    const digits = phone.replace(/\D/g, "");
+    if (digits && !/^9\d{9}$/.test(digits)) {
+      setError("Enter a valid mobile number: 10 digits starting with 9.");
       return;
     }
     if (!school) {
@@ -179,16 +201,19 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       setError("Passwords do not match.");
       return;
     }
+    if (!agree) {
+      setError("Please accept the Terms of Service to continue.");
+      return;
+    }
 
     setLoading(true);
     try {
       await registerUser({
         email,
         password,
-        fullName: joinName(firstName, middleName, lastName),
-        program: program || undefined,
-        yearLevel: yearLevel || undefined,
+        fullName: joinName(firstName, "", lastName),
         school,
+        phone: digits || undefined,
       });
       setSubmitted(true);
     } catch (err: any) {
@@ -215,21 +240,22 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
           <BrandPanel />
           <div className="relative p-8 sm:p-10 flex flex-col items-center justify-center text-center bg-[#141824]">
             <div className="w-14 h-14 rounded-2xl bg-[#5b6ef5]/15 flex items-center justify-center mb-6">
-              <Clock className="w-7 h-7 text-[#5b6ef5]" />
+              <Mail className="w-7 h-7 text-[#5b6ef5]" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">
-              Registration Submitted
+              Verify your email
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm">
-              Your account is waiting for admin approval. Once approved, we&apos;ll
-              email you a verification link — open it, then you can sign in.
+              We sent a verification link to{" "}
+              <span className="font-semibold text-white">{email.trim()}</span>.
+              Open it (check spam too), then sign in.
             </p>
             <button
               type="button"
               onClick={onGoToLogin}
               className="w-full py-3.5 bg-[#5b6ef5] hover:bg-[#4c5eea] text-white font-bold rounded-xl shadow-lg shadow-[#5b6ef5]/25 transition-colors"
             >
-              Back to Login
+              Go to Sign In
             </button>
           </div>
         </div>
@@ -297,39 +323,24 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
               </div>
             )}
 
-            <div>
-              <label htmlFor="reg-first" className={labelClass}>
-                First Name
-              </label>
-              <div className="relative">
-                <UserIcon className={iconClass} />
-                <input
-                  id="reg-first"
-                  type="text"
-                  required
-                  autoComplete="given-name"
-                  className={fieldClass("pl-10 pr-4")}
-                  placeholder="Juan"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-              </div>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="reg-middle" className={labelClass}>
-                  Middle Name
+                <label htmlFor="reg-first" className={labelClass}>
+                  First Name
                 </label>
-                <input
-                  id="reg-middle"
-                  type="text"
-                  autoComplete="additional-name"
-                  className={fieldClass("px-3")}
-                  placeholder="Optional"
-                  value={middleName}
-                  onChange={(e) => setMiddleName(e.target.value)}
-                />
+                <div className="relative">
+                  <UserIcon className={iconClass} />
+                  <input
+                    id="reg-first"
+                    type="text"
+                    required
+                    autoComplete="given-name"
+                    className={fieldClass("pl-10 pr-3")}
+                    placeholder="Juan"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
               </div>
               <div>
                 <label htmlFor="reg-last" className={labelClass}>
@@ -341,7 +352,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   required
                   autoComplete="family-name"
                   className={fieldClass("px-3")}
-                  placeholder="Dela Cruz"
+                  placeholder="dela Cruz"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                 />
@@ -371,7 +382,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
 
             <div>
               <label htmlFor="reg-email" className={labelClass}>
-                Email address
+                Email Address
               </label>
               <div className="relative">
                 <Mail className={iconClass} />
@@ -381,48 +392,45 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   required
                   autoComplete="email"
                   className={fieldClass("pl-10 pr-4")}
-                  placeholder="juan.delacruz@nu-clark.edu.ph"
+                  placeholder="name@nu-clark.edu.ph"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Use your @nu-clark.edu.ph school email.
-              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="reg-program" className={labelClass}>
-                  Program
-                </label>
+            <div>
+              <label htmlFor="reg-phone" className={labelClass}>
+                Mobile Number
+              </label>
+              <div className="relative flex">
+                <span
+                  className={`inline-flex items-center px-3 rounded-l-xl border text-sm font-semibold ${
+                    isDarkPanel
+                      ? "bg-[#1c2130] border-white/10 text-slate-400"
+                      : "bg-slate-100 border-slate-200 text-slate-500"
+                  }`}
+                >
+                  +63
+                </span>
                 <input
-                  id="reg-program"
-                  type="text"
-                  className={fieldClass("px-3")}
-                  placeholder="Ex. BSIT"
-                  value={program}
-                  onChange={(e) => setProgram(e.target.value)}
+                  id="reg-phone"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  maxLength={10}
+                  className={fieldClass("px-4 rounded-l-none")}
+                  placeholder="9XXXXXXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 />
               </div>
-              <div>
-                <label htmlFor="reg-year" className={labelClass}>
-                  Year Level
-                </label>
-                <select
-                  id="reg-year"
-                  className={fieldClass("px-3")}
-                  value={yearLevel}
-                  onChange={(e) => setYearLevel(e.target.value)}
-                >
-                  <option value="">Select</option>
-                  {YEAR_LEVELS.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            </div>
+
+            <div
+              className={`pt-2 text-[11px] font-bold uppercase tracking-widest ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`}
+            >
+              Security
             </div>
 
             <div>
@@ -438,7 +446,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   minLength={6}
                   autoComplete="new-password"
                   className={fieldClass("pl-10 pr-11")}
-                  placeholder="••••••••"
+                  placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -455,6 +463,27 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   )}
                 </button>
               </div>
+              {password.length > 0 && (
+                <div className="mt-2">
+                  <div className="flex gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1 flex-1 rounded-full ${
+                          i < strength.score
+                            ? strength.color
+                            : isDarkPanel
+                              ? "bg-white/10"
+                              : "bg-slate-200"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`mt-1 text-[11px] font-semibold ${isDarkPanel ? "text-slate-400" : "text-slate-500"}`}>
+                    Password strength: {strength.label}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div>
@@ -470,7 +499,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   minLength={6}
                   autoComplete="new-password"
                   className={fieldClass("pl-10 pr-11")}
-                  placeholder="••••••••"
+                  placeholder="Re-enter password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
@@ -489,7 +518,27 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   )}
                 </button>
               </div>
+              {confirmPassword.length > 0 && confirmPassword !== password && (
+                <p className="mt-1 text-[11px] font-semibold text-red-400">
+                  Passwords do not match.
+                </p>
+              )}
             </div>
+
+            <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={agree}
+                onChange={(e) => setAgree(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded text-[#5b6ef5] focus:ring-[#5b6ef5]"
+              />
+              <span className={`text-xs ${isDarkPanel ? "text-slate-400" : "text-slate-600"}`}>
+                I agree to the{" "}
+                <span className="font-semibold text-[#5b6ef5]">Terms of Service</span>
+                {" "}and acknowledge that a verification email will be sent to my
+                address.
+              </span>
+            </label>
 
             <button
               type="submit"
@@ -501,7 +550,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
               ) : (
                 <>
                   <UserPlus className="w-4 h-4" />
-                  Register
+                  Create account
                 </>
               )}
             </button>
@@ -514,7 +563,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
               onClick={onGoToLogin}
               className="font-semibold text-[#5b6ef5] hover:underline"
             >
-              Log in
+              Sign In
             </button>
           </p>
         </div>

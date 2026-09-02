@@ -590,7 +590,7 @@ export async function createApp() {
       const caller = await verifyAndGetCaller(req.headers.authorization);
       if (!caller) return res.status(401).json({ message: "Unauthorized" });
 
-      const { fullName, program, yearLevel, school, avatar } = req.body ?? {};
+      const { fullName, program, yearLevel, school, phone, avatar } = req.body ?? {};
       const updates: Record<string, any> = { updated_at: new Date().toISOString() };
 
       let newDisplayName: string | null = null;
@@ -618,6 +618,13 @@ export async function createApp() {
           return res.status(400).json({ message: "School is invalid or too long." });
         }
         updates.school = typeof school === "string" && school.trim() ? school.trim() : null;
+      }
+      if (phone !== undefined) {
+        const p = String(phone ?? "").replace(/\D/g, "");
+        if (p && !/^9\d{9}$/.test(p)) {
+          return res.status(400).json({ message: "Enter a valid mobile number (10 digits, starting with 9)." });
+        }
+        updates.phone = p || null;
       }
       if (avatar !== undefined) {
         if (
@@ -657,16 +664,17 @@ export async function createApp() {
 
   // ===============================================================
   // PUBLIC SELF-REGISTRATION
-  // Unauthenticated. This does NOT create a Firebase Auth user or a `users`
-  // row. It stores the request in registration_requests (password encrypted)
-  // until an admin approves it via /api/registration-requests/:id/approve.
-  // If the admin rejects it, the request row is deleted and nothing else
-  // was ever created.
+  // Unauthenticated. Self-service — no admin approval. Creates the Firebase
+  // Auth user and the Supabase `users` row immediately (role STUDENT, status
+  // APPROVED) but leaves the account UNVERIFIED. The student must click the
+  // email verification link before they can sign in (enforced in
+  // verifyAndGetCaller / /api/auth/me). Restricted to the allowed sign-up
+  // domain(s).
   // ===============================================================
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, fullName, program, yearLevel, school } = req.body;
+      const { email, password, fullName, program, yearLevel, school, phone } = req.body;
       if (!email || !password || !fullName) {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName",
@@ -679,50 +687,81 @@ export async function createApp() {
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
       }
+      if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 120) {
+        return res.status(400).json({ message: "Please provide your full name." });
+      }
+      // Optional PH mobile number: 10 digits after +63, starting with 9.
+      const normPhone = String(phone ?? "").replace(/\D/g, "");
+      if (normPhone && !/^9\d{9}$/.test(normPhone)) {
+        return res.status(400).json({
+          message: "Enter a valid mobile number (10 digits, starting with 9).",
+        });
+      }
 
       // Already a real account?
       const { data: existingUser } = await supabase
         .from("users").select("id").eq("email", normEmail).maybeSingle();
       if (existingUser) {
-        return res.status(409).json({ message: "An account with this email already exists." });
+        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       }
       try {
         await auth.getUserByEmail(normEmail);
-        return res.status(409).json({ message: "An account with this email already exists." });
+        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       } catch (e: any) {
         if (e.code !== "auth/user-not-found") throw e;
       }
 
-      // Already a pending request?
-      const { data: existingReq } = await supabase
-        .from("registration_requests").select("id").eq("email", normEmail).maybeSingle();
-      if (existingReq) {
-        return res.status(409).json({
-          message: "A request for this email is already awaiting review.",
+      // Create the Firebase Auth account — unverified.
+      let userRecord;
+      try {
+        userRecord = await auth.createUser({
+          email: normEmail,
+          password,
+          displayName: fullName.trim(),
+          emailVerified: false,
         });
-      }
-
-      const { error } = await supabase.from("registration_requests").insert({
-        email: normEmail,
-        full_name: fullName,
-        program: program || null,
-        year_level: yearLevel || null,
-        school: school || null,
-        enc_password: encryptRegPassword(password),
-      });
-      if (error) {
-        if ((error as any).code === "23505") {
-          return res.status(409).json({
-            message: "A request for this email is already awaiting review.",
-          });
+      } catch (createErr: any) {
+        if (createErr.code === "auth/email-already-exists") {
+          return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
         }
-        throw new Error(error.message);
+        throw createErr;
       }
 
-      await logAudit(null, "REGISTRATION_REQUEST", "registration_requests", normEmail, { email: normEmail });
+      const { error: insErr } = await supabase.from("users").insert(
+        profileToRow({
+          firebaseUid: userRecord.uid,
+          email: normEmail,
+          fullName: fullName.trim(),
+          role: "STUDENT",
+          program: program || null,
+          yearLevel: yearLevel || null,
+          school: school || null,
+          phone: normPhone || null,
+          isDeleted: false,
+          status: "APPROVED",
+          createdBy: "SELF_SIGNUP",
+        }),
+      );
+      if (insErr) {
+        // Roll back the Firebase account so a retry can succeed cleanly.
+        await auth.deleteUser(userRecord.uid).catch(() => {});
+        throw new Error(insErr.message);
+      }
+
+      await logAudit(userRecord.uid, "SELF_SIGNUP", "users", userRecord.uid, { email: normEmail });
+
+      // Send the verification link (best-effort; the client also triggers a
+      // Firebase-native send on the first blocked sign-in).
+      try {
+        const link = await auth.generateEmailVerificationLink(normEmail);
+        await sendVerificationEmail({ to: normEmail, fullName: fullName.trim(), link });
+      } catch (e: any) {
+        console.warn("[register] verification email failed:", e?.message ?? e);
+      }
 
       res.status(201).json({
-        message: "Registration submitted. You can sign in once an administrator approves your request.",
+        message:
+          "Account created. Check your email for a verification link, then sign in.",
       });
     } catch (error: any) {
       console.error("Register error:", error);

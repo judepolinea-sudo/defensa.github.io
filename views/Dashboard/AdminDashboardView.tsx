@@ -539,11 +539,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     },
     { id: "users", icon: <Users className="w-5 h-5" />, label: "User Access" },
     {
-      id: "pending",
-      icon: <Bell className="w-4 h-5" />,
-      label: "Pending Approvals",
-    },
-    {
       id: "resets",
       icon: <Key className="w-5 h-5" />,
       label: "Password Resets",

@@ -155,6 +155,7 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
+  phone?: string;
 }): Promise<void> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",

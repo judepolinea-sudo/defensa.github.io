@@ -48,6 +48,7 @@ export function rowToProfile(row: Record<string, any>) {
     program: row.program ?? null,
     yearLevel: row.year_level ?? null,
     school: row.school ?? null,
+    phone: row.phone ?? null,
     avatar: row.avatar ?? null,
     groupId: row.group_id ?? null,
     adviserId: row.adviser_firebase_uid ?? null,
@@ -70,6 +71,7 @@ export function profileToRow(profile: {
   program?: string | null;
   yearLevel?: string | null;
   school?: string | null;
+  phone?: string | null;
   groupId?: string | null;
   adviserFirebaseUid?: string | null;
   isDeleted?: boolean;
@@ -84,6 +86,7 @@ export function profileToRow(profile: {
     program: profile.program ?? null,
     year_level: profile.yearLevel ?? null,
     school: profile.school ?? null,
+    phone: profile.phone ?? null,
     group_id: profile.groupId ?? null,
     adviser_firebase_uid: profile.adviserFirebaseUid ?? null,
     is_deleted: profile.isDeleted ?? false,
