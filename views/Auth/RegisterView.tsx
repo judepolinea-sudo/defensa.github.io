@@ -180,8 +180,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       setError("Please enter your first and last name.");
       return;
     }
-    if (!email.trim().toLowerCase().endsWith("@nu-clark.edu.ph")) {
-      setError("Only @nu-clark.edu.ph email accounts can sign up.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Please enter a valid email address so we can send your verification link.");
       return;
     }
     const digits = phone.replace(/\D/g, "");
@@ -392,11 +392,15 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                   required
                   autoComplete="email"
                   className={fieldClass("pl-10 pr-4")}
-                  placeholder="name@nu-clark.edu.ph"
+                  placeholder="name@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Use a real inbox — we send a verification link you must open before
+                your account is activated.
+              </p>
             </div>
 
             <div>

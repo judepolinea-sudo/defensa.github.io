@@ -127,18 +127,26 @@ function isValidRole(role: string): role is AppRole {
 // bootstrap admin are exempt.
 // ===============================================================
 
-const ALLOWED_SIGNUP_DOMAINS = ["nu-clark.edu.ph"];
+// Optional allow-list of sign-up email domains. Empty = any real email is
+// accepted (email verification proves the address is real). To lock sign-up
+// back down to one institution, put its domain here, e.g. ["nu-clark.edu.ph"].
+const ALLOWED_SIGNUP_DOMAINS: string[] = [];
+
+function isValidEmailFormat(email: string | undefined | null): boolean {
+  return !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
 
 function isAllowedSignupEmail(email: string | undefined | null): boolean {
-  if (!email) return false;
-  const at = email.lastIndexOf("@");
-  if (at === -1) return false;
-  const domain = email.slice(at + 1).toLowerCase().trim();
+  if (!isValidEmailFormat(email)) return false;
+  if (ALLOWED_SIGNUP_DOMAINS.length === 0) return true;
+  const domain = String(email).slice(String(email).lastIndexOf("@") + 1).toLowerCase().trim();
   return ALLOWED_SIGNUP_DOMAINS.includes(domain);
 }
 
 const SIGNUP_DOMAIN_MESSAGE =
-  "Only @nu-clark.edu.ph email accounts can sign up.";
+  ALLOWED_SIGNUP_DOMAINS.length > 0
+    ? `Sign-up is limited to: ${ALLOWED_SIGNUP_DOMAINS.map((d) => "@" + d).join(", ")}`
+    : "Please enter a valid email address.";
 
 // ===============================================================
 // REGISTRATION REQUEST PASSWORD ENCRYPTION
@@ -743,9 +751,16 @@ export async function createApp() {
         }),
       );
       if (insErr) {
-        // Roll back the Firebase account so a retry can succeed cleanly.
+        // Roll back the Firebase account so a retry can succeed cleanly — the
+        // account only counts as created once the Supabase row is written.
         await auth.deleteUser(userRecord.uid).catch(() => {});
-        throw new Error(insErr.message);
+        console.error("[register] Supabase insert failed:", insErr);
+        const missing = /Could not find the .* column|does not exist/i.test(insErr.message || "");
+        return res.status(500).json({
+          message: missing
+            ? "Sign-up isn't fully set up yet. Ask the administrator to run the pending database migration."
+            : "Could not create your account. Please try again.",
+        });
       }
 
       await logAudit(userRecord.uid, "SELF_SIGNUP", "users", userRecord.uid, { email: normEmail });

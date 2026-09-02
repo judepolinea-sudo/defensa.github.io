@@ -119,7 +119,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
 
     const trimmedEmail = email.trim();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setError("Please enter a valid email address, for example name@nu-clark.edu.ph.");
+      setError("Please enter a valid email address, for example name@gmail.com.");
       return;
     }
     if (!password) {
@@ -415,7 +415,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
                       ? "bg-[#1c2130] border border-white/10 text-white placeholder:text-slate-500"
                       : "bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400"
                   }`}
-                  placeholder="name@nu-clark.edu.ph"
+                  placeholder="name@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
