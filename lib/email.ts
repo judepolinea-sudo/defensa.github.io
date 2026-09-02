@@ -17,6 +17,10 @@ function getTransporter(): nodemailer.Transporter | null {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    // Fail fast instead of hanging when the host blocks outbound SMTP.
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 20_000,
   });
   return cached;
 }
@@ -45,7 +49,12 @@ export async function checkEmailConnection(): Promise<{
   const t = getTransporter();
   if (!t) return { ...base, ok: false, error: "SMTP_USER / SMTP_PASS not set" };
   try {
-    await t.verify();
+    await Promise.race([
+      t.verify(),
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("timeout — the host is likely blocking outbound SMTP on this port")), 15_000),
+      ),
+    ]);
     return { ...base, ok: true };
   } catch (e: any) {
     return { ...base, ok: false, error: e?.message ?? String(e) };
