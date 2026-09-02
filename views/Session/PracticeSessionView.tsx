@@ -775,9 +775,18 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     const rootQuestion = rootQuestionRef.current ?? currentQuestion;
     const lastQuestionText = rootQuestion.question;
     const wasThreaded = activeThreadExchanges.length > 0;
+    // Record EVERY question and answer in the thread, not just one "final"
+    // answer. This full text is what gets stored in Supabase's answer column.
+    const answerForRecord = wasThreaded
+      ? activeThreadExchanges
+          .map((ex, i) =>
+            `${ex.isFollowUp ? `Follow-up ${i}` : 'Question'}: ${ex.question}\nAnswer: ${(ex.answer || '(no answer)').trim()}`,
+          )
+          .join('\n\n')
+      : capturedResponse;
     const qa: QuestionAnswer = {
       question: lastQuestionText,
-      answer: capturedResponse,
+      answer: answerForRecord,
       category: sessionPhase,
       panelistName: rootQuestion.panelist?.name ?? undefined,
       panelistPersonality: rootQuestion.panelist?.persona ?? undefined,
