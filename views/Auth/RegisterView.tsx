@@ -167,6 +167,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [emailSent, setEmailSent] = useState(true);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
 
   const strength = passwordStrength(password);
@@ -202,12 +203,13 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
 
     setLoading(true);
     try {
-      await registerUser({
+      const { emailSent } = await registerUser({
         email,
         password,
         fullName: joinName(firstName, "", lastName),
         school,
       });
+      setEmailSent(emailSent);
       setSubmitted(true);
     } catch (err: any) {
       console.error("Registration error:", err);
@@ -238,11 +240,20 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
             <h2 className="text-2xl font-bold text-white mb-2">
               Verify your email
             </h2>
-            <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm">
-              We sent a verification link to{" "}
-              <span className="font-semibold text-white">{email.trim()}</span>.
-              Open it (check spam too), then sign in.
-            </p>
+            {emailSent ? (
+              <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm">
+                We sent a verification link to{" "}
+                <span className="font-semibold text-white">{email.trim()}</span>.
+                Open it (check spam too), then sign in.
+              </p>
+            ) : (
+              <p className="text-sm text-amber-300/90 leading-relaxed mb-8 max-w-sm">
+                Your account was created, but we couldn&apos;t send the
+                verification email automatically. On the sign-in screen, enter
+                your email and password and use{" "}
+                <span className="font-semibold">Resend verification email</span>.
+              </p>
+            )}
             <button
               type="button"
               onClick={onGoToLogin}

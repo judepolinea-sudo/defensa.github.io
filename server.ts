@@ -9,7 +9,7 @@ import admin from "firebase-admin";
 import { GoogleGenAI } from "@google/genai";
 import firebaseConfig from "./firebase-applet-config.json" with { type: "json" };
 import { supabase, rowToProfile, profileToRow, logAudit } from "./lib/supabaseAdmin.ts";
-import { sendGoogleWelcomeEmail, sendVerificationEmail } from "./lib/email.ts";
+import { sendGoogleWelcomeEmail, sendVerificationEmail, isEmailConfigured } from "./lib/email.ts";
 import {
   saveActiveSession,
   getActiveSession,
@@ -772,18 +772,27 @@ export async function createApp() {
 
       await logAudit(uid, "SELF_SIGNUP_PENDING", "users", uid, { email: normEmail });
 
-      // Send the verification link. Best-effort server-side (needs SMTP); the
-      // client also fires Firebase's own sendEmailVerification right after this.
+      // Send the branded verification email ourselves (needs SMTP). If SMTP
+      // isn't configured, the client falls back to Firebase's own (plain)
+      // verification email via sendEmailVerification.
+      let emailSent = false;
       try {
+        // No actionCodeSettings — the link uses Firebase's default handler,
+        // which needs no extra authorized-domain setup.
         const link = await auth.generateEmailVerificationLink(normEmail);
-        await sendVerificationEmail({ to: normEmail, fullName: fullName.trim(), link });
+        emailSent = await sendVerificationEmail({
+          to: normEmail,
+          fullName: fullName.trim(),
+          link,
+        });
       } catch (e: any) {
         console.warn("[register] verification email failed:", e?.message ?? e);
       }
 
       res.status(201).json({
-        message:
-          "Account created. Check your email for a verification link, then sign in.",
+        message: "Account created. Check your email for the verification link, then sign in.",
+        emailSent,
+        emailConfigured: isEmailConfigured(),
       });
     } catch (error: any) {
       console.error("Register error:", error);

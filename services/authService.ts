@@ -141,7 +141,9 @@ export const loginUser = async (
     // (re)send the verification email via Firebase's own delivery — this
     // works even when the server has no SMTP configured.
     if (err?.code === "EMAIL_NOT_VERIFIED" && !userCredential.user.emailVerified) {
-      await sendEmailVerification(userCredential.user).catch(() => {});
+      await sendEmailVerification(userCredential.user).catch((e) =>
+        console.warn("sendEmailVerification failed:", e?.code, e?.message),
+      );
     }
     await signOut(auth);
     throw err;
@@ -155,7 +157,7 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
-}): Promise<void> => {
+}): Promise<{ emailSent: boolean }> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -166,23 +168,30 @@ export const registerUser = async (params: {
     throw new Error(data.message || "Registration failed. Please try again.");
   }
 
-  // Sign in just long enough to trigger Firebase's own verification email
-  // (works without any SMTP configured), then sign back out.
-  try {
-    await applyAuthPersistence(false);
-    const cred = await signInWithEmailAndPassword(
-      auth,
-      params.email.trim().toLowerCase(),
-      params.password,
-    );
-    if (!cred.user.emailVerified) {
-      await sendEmailVerification(cred.user);
+  let emailSent = data.emailSent === true;
+
+  // If the server didn't send our branded email (SMTP not configured), sign
+  // in briefly and trigger Firebase's own verification email instead.
+  if (!emailSent) {
+    try {
+      await applyAuthPersistence(false);
+      const cred = await signInWithEmailAndPassword(
+        auth,
+        params.email.trim().toLowerCase(),
+        params.password,
+      );
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user);
+        emailSent = true;
+      }
+    } catch (e) {
+      console.warn("Post-register verification email could not be sent:", e);
+    } finally {
+      await signOut(auth).catch(() => {});
     }
-  } catch (e) {
-    console.warn("Post-register verification email could not be sent:", e);
-  } finally {
-    await signOut(auth).catch(() => {});
   }
+
+  return { emailSent };
 };
 
 // Asks the backend to re-send the email verification link for a signed-out
