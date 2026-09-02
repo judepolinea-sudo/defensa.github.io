@@ -324,11 +324,54 @@ function getContextualFallbackQuestion(
 const NON_ANSWER_RE =
   /^\s*(i\s+(do\s*n['’]?t|don['’]?t|do\s+not|can\s*not|can['’]?t)\s+know|no\s+idea|not\s+sure|unsure|idk|i\s+pass|pass|skip|n\s*\/?\s*a|none|nothing|no\s+comment|i\s+forgot|i\s+have\s+no\s+(idea|answer)|i\s+can['’]?t\s+answer)\b/i;
 
+// Help/support requests and "I'm confused" noises — not attempts to answer.
+const META_OR_CONFUSED_RE =
+  /\b(help\s*me|i\s+need\s+help|please\s+help|assist\s+me|my\s+(account|password|email|access)\s+(is\s+)?(lost|gone|missing|hacked|not\s+working)|i\s+(lost|forgot)\s+my\s+(account|password|email)|can['’]?t\s+(log\s*in|sign\s*in|access\s+my)|log\s*in\s+(problem|issue)|reset\s+my\s+password|what\s+(what|do\s+you\s+mean|are\s+you\s+asking)|repeat\s+the\s+question|i\s+don['’]?t\s+understand\s+the\s+question|say\s+(that\s+)?again|come\s+again)\b/i;
+
 export function isNonAnswer(answer: string): boolean {
-  const t = (answer || "").trim().toLowerCase().replace(/[.!?,;:\s]+$/g, "");
+  const raw = (answer || "").trim();
+  const t = raw.toLowerCase().replace(/[.!?,;:\s]+$/g, "");
   if (!t) return true;
-  if (["no", "yes", "ok", "okay", "maybe", "na", "n/a", "none", "idk"].includes(t)) return true;
-  return NON_ANSWER_RE.test(t);
+  if (["no", "yes", "ok", "okay", "maybe", "na", "n/a", "none", "idk", "huh", "what", "why", "wat", "eh"].includes(t))
+    return true;
+  if (NON_ANSWER_RE.test(t)) return true;
+  if (META_OR_CONFUSED_RE.test(t)) return true;
+  // Made up only of interrogatives / punctuation — "what what/what???", "huh??"
+  const wordsOnly = t.replace(/[^a-z\s]/g, " ").trim();
+  if (wordsOnly && /^((what|why|how|huh|wat|eh|who|when|where)\s*)+$/i.test(wordsOnly)) return true;
+  return false;
+}
+
+// True when the answer's substantive vocabulary connects to NEITHER the
+// question nor the source document — i.e. it's off-topic, even if it's real
+// words ("my account is lost", a tangent, etc.).
+export function looksOffTopic(
+  answer: string,
+  question: string,
+  sourceText = "",
+): boolean {
+  const OT_STOP = new Set([
+    "the","a","an","is","are","was","were","this","that","these","those","and","or","but",
+    "not","for","with","from","into","your","you","have","has","had","will","can","would",
+    "could","should","about","what","why","how","does","did","study","research","paper",
+    "system","please","help","need","want","just","like","some","any","also","more",
+  ]);
+  const terms = (s: string) =>
+    new Set(
+      (s.toLowerCase().match(/\b[a-z][a-z-]{3,}\b/g) || []).filter((w) => !OT_STOP.has(w)),
+    );
+  const aTerms = [...terms(answer)];
+  const wordCount = (answer.trim().match(/\S+/g) || []).length;
+  if (wordCount > 0 && aTerms.length === 0) return true; // words, but nothing substantive
+  if (aTerms.length === 0) return true;
+  const qTerms = terms(question);
+  const src = (sourceText || "").toLowerCase();
+  const connected = aTerms.filter(
+    (w) => qTerms.has(w) || (src.length > 40 && src.includes(w.slice(0, 6))),
+  ).length;
+  // A short answer whose content words barely touch the question or the paper
+  // isn't engaging with what was asked.
+  return wordCount <= 18 && aTerms.length <= 10 && connected / aTerms.length < 0.17;
 }
 
 export function looksLikeGibberish(answer: string): boolean {
@@ -419,7 +462,11 @@ function localEvaluate(
   // Non-substantive answers get a fixed near-zero result — including a low
   // confidence, because "composure" on an empty answer is not a real score.
   if (isNonAnswer(answer)) return nonSubstantiveResult("nonanswer");
-  if (looksLikeGibberish(answer) || (wordCount > 8 && overlapRatio < 0.06 && meaningfulHits < 3)) {
+  if (
+    looksLikeGibberish(answer) ||
+    looksOffTopic(answer, question, expectedKeywords.join(" ")) ||
+    (wordCount > 6 && overlapRatio < 0.06 && meaningfulHits < 3)
+  ) {
     return nonSubstantiveResult("gibberish");
   }
   if (wordCount < 5) return nonSubstantiveResult("trivial");
@@ -1030,9 +1077,12 @@ export const generateDynamicQuestion = async (
   // the thread of the current answer) instead of always feeding the first N
   // characters — otherwise, on a long paper, every question ends up drawn from
   // the introduction.
+  // A gibberish / non-answer shouldn't steer which part of the paper we pull.
+  const answerForQuery =
+    lastAnswer && !isNonAnswer(lastAnswer) && !looksLikeGibberish(lastAnswer) ? lastAnswer : "";
   let docChunk: string;
   if (ragChunks.length > 0) {
-    const query = `${targetSection} ${lastQuestion} ${lastAnswer}`.trim() || targetSection;
+    const query = `${targetSection} ${lastQuestion} ${answerForQuery}`.trim() || targetSection;
     const hits = retrieveRelevantChunksImproved(query, ragChunks, 4);
     const picked = (hits.length > 0 ? hits : ragChunks).map((c) => c.text).join("\n");
     docChunk = picked.substring(0, 1800);
@@ -1630,9 +1680,13 @@ JUDGE OUTPUT — Return ONLY this JSON:
     const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 900, timeoutMs: 20_000 });
     const parsed = parseAIJson(raw);
 
-    // Hard clamp: keyboard-mashing and "I don't know" can never earn points,
-    // no matter how lenient the model was.
-    if (isNonAnswer(answer) || looksLikeGibberish(answer)) {
+    // Hard clamp: keyboard-mashing, "I don't know", help requests, and answers
+    // that never engage the question / the research can never earn points.
+    if (
+      isNonAnswer(answer) ||
+      looksLikeGibberish(answer) ||
+      looksOffTopic(answer, question, abstract)
+    ) {
       return localEvaluate(
         question,
         answer,
@@ -1703,20 +1757,36 @@ function documentGrounding(answer: string, sourceText: string): number {
   return hits / terms.length;
 }
 
+// A firm, varying follow-up that simply restates the question the student
+// dodged — more useful (and less repetitive) than a generic "go deeper".
+function restateFollowup(rootQuestion: string, attempt = 0): string {
+  const q = rootQuestion.replace(/\s+/g, " ").trim().slice(0, 220);
+  const lead = [
+    "That doesn't answer the question. Let me put it plainly:",
+    "You still haven't addressed it. Once more:",
+    "I need a direct answer to this:",
+  ];
+  return `${lead[Math.min(attempt, lead.length - 1)]} ${q}`;
+}
+
 // Offline / parse-failure satisfaction scorer. Rejects non-substantive answers
 // outright, and marks down answers that are not grounded in the document.
 function localSatisfaction(
   rootQuestion: string,
   latestAnswer: string,
   sourceText = "",
+  followUpCount = 0,
 ): SatisfactionResult {
-  if (looksLikeGibberish(latestAnswer) || isNonAnswer(latestAnswer)) {
+  if (
+    looksLikeGibberish(latestAnswer) ||
+    isNonAnswer(latestAnswer) ||
+    looksOffTopic(latestAnswer, rootQuestion, sourceText)
+  ) {
     return {
-      satisfaction_score: 6,
+      satisfaction_score: 5,
       verdict: "evasive",
-      gaps: ["The answer does not address the question."],
-      followup_question:
-        "That does not answer the question. State your actual answer using specifics from your research.",
+      gaps: ["The answer does not address the question at all."],
+      followup_question: restateFollowup(rootQuestion, followUpCount),
       panelist_remark: "That is not an answer to what I asked.",
     };
   }
@@ -1731,33 +1801,44 @@ function localSatisfaction(
     /\b\d/.test(latestAnswer) ||
     /for example|such as|because|method|methodology|data|result|finding|survey|respondent|sample|analysis/i.test(latestAnswer);
 
+  // On-topic signal: does the answer engage with the question / the paper?
+  const relevance = Math.max(qOverlap, grounding);
+
   let score =
-    16 +
-    Math.min(words.length, 70) * 0.35 +
-    qOverlap * 22 +
-    grounding * 34 +
+    10 +
+    Math.min(words.length, 60) * 0.25 +
+    qOverlap * 26 +
+    grounding * 30 +
     (hasSpecifics ? 8 : 0);
 
-  // An answer that barely matches the document cannot be "satisfying" no matter
-  // how fluent or long it is.
-  if (grounding < 0.2) score = Math.min(score, 38);
+  // Relevance gates — an answer that doesn't engage the question can't score
+  // as "partial", no matter how long or fluent it is.
+  if (relevance < 0.1) score = Math.min(score, 15);
+  else if (relevance < 0.2) score = Math.min(score, 34);
+  else if (grounding < 0.2) score = Math.min(score, 42);
   else if (grounding < 0.35) score = Math.min(score, 58);
 
-  score = Math.round(Math.max(10, Math.min(88, score)));
+  score = Math.round(Math.max(4, Math.min(88, score)));
   const satisfied = score >= SAT_THRESHOLD;
+  const weak = grounding < 0.35;
+  const fu = [
+    weak
+      ? "Tie that to your own study. What does your document actually report on this point?"
+      : "Give a specific finding or example from your research that supports that.",
+    weak
+      ? "That's still not grounded in your paper. Point me to the part of your study that backs it."
+      : "Be concrete — cite a number, a method, or a result from your work.",
+    "You're circling it. State the direct answer in one or two sentences, using your findings.",
+  ];
   return {
     satisfaction_score: score,
-    verdict: satisfied ? "satisfied" : "needs_followup",
+    verdict: satisfied ? "satisfied" : score < 20 ? "evasive" : "needs_followup",
     gaps: satisfied
       ? []
-      : grounding < 0.35
-        ? ["The answer is not clearly grounded in your document. Tie it to what your study actually reports."]
-        : ["The answer needs more specifics grounded in your research."],
-    followup_question: satisfied
-      ? null
-      : grounding < 0.35
-        ? "Connect that to your document. What does your own study actually say about this?"
-        : "Go further. Support that with a concrete example or finding from your study.",
+      : weak
+        ? ["The answer is not clearly grounded in your document."]
+        : ["The answer needs specifics from your research."],
+    followup_question: satisfied ? null : fu[Math.min(followUpCount, fu.length - 1)],
     panelist_remark: satisfied
       ? "Alright, that addresses it."
       : "I need more detail from you on that, tied to your research.",
@@ -1774,7 +1855,14 @@ export const evaluateSatisfaction = async (
   consecutiveEvasiveCount: number,
 ): Promise<SatisfactionResult> => {
   const MAX_FOLLOWUPS = 3;
-  const forceClose = followUpCount >= MAX_FOLLOWUPS;
+  // Close the thread once the follow-up cap is hit, OR after the student has
+  // been evasive / non-responsive twice already (this answer would be the
+  // 3rd) — no point looping the same question forever.
+  const forceClose = followUpCount >= MAX_FOLLOWUPS || consecutiveEvasiveCount >= 2;
+  const badAnswer =
+    looksLikeGibberish(latestAnswer) ||
+    isNonAnswer(latestAnswer) ||
+    looksOffTopic(latestAnswer, rootQuestion, abstract);
 
   const threadBlock = threadHistory.length > 0
     ? threadHistory
@@ -1815,10 +1903,16 @@ SATISFACTION SCORING GUIDE:
 - 0–49: Vague, evasive, off-topic, or misses the core of the question
 
 FOLLOW-UP RULES (if verdict is needs_followup or evasive):
-- The follow-up MUST quote or paraphrase something the student actually said
-- Target only ONE gap — the most critical one
-- Match ${panelist.name}'s style and persona
-- Keep it concise (one question, 1–2 sentences max)
+- If the student engaged with the topic: quote or paraphrase something they
+  actually said, and push on the single most critical gap.
+- If the answer was evasive, off-topic, a help/support request, or "I don't
+  know": do NOT invent something they said. Firmly restate the ROOT QUESTION
+  in plainer words, e.g. "That doesn't answer it. Directly: <root question>".
+- One question, 1–2 sentences, in ${panelist.name}'s voice.
+
+SCORING GUARDS:
+- An answer that does not engage the question or the research is 0–15, verdict "evasive".
+- An answer with no specifics grounded in the student's own study cannot exceed ~55.
 
 Return ONLY valid JSON — no markdown, no explanation:
 {
@@ -1845,36 +1939,33 @@ Return ONLY valid JSON — no markdown, no explanation:
     // Clamp score
     parsed.satisfaction_score = Math.min(100, Math.max(0, Math.round(parsed.satisfaction_score ?? 50)));
 
-    // Hard floor: a small model can be talked into scoring key-mashing or
-    // "I don't know" as "partial". It never is.
-    if (looksLikeGibberish(latestAnswer) || isNonAnswer(latestAnswer)) {
-      parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 10);
+    // Hard floor: key-mashing, "I don't know", help requests, and answers that
+    // never touch the question or the research are never "partial".
+    if (badAnswer) {
+      parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 8);
+      parsed.verdict = 'evasive';
+      parsed.gaps = ["The answer does not address the question."];
       if (!forceClose) {
-        parsed.verdict = 'evasive';
-        if (!parsed.followup_question) {
-          parsed.followup_question =
-            'That does not answer the question. State your actual answer using specifics from your research.';
-        }
+        parsed.followup_question = restateFollowup(rootQuestion, followUpCount);
       }
     }
 
     // Document-grounding clamp: a small model will happily reward a confident,
     // fluent answer that has nothing to do with the student's actual paper.
-    // If the answer barely overlaps the document, it cannot be "satisfying".
-    if (!forceClose && abstract && abstract.trim().length > 40 && !looksLikeGibberish(latestAnswer) && !isNonAnswer(latestAnswer)) {
+    if (!forceClose && !badAnswer && abstract && abstract.trim().length > 40) {
       const grounding = documentGrounding(latestAnswer, abstract);
       if (grounding < 0.15) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 40);
-        parsed.verdict = 'needs_followup';
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 35);
+        if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
         if (!parsed.followup_question) {
           parsed.followup_question =
-            "Connect that to your document. What does your own study actually say about this?";
+            "Tie that to your own study — what does your document actually report on this?";
         }
         if (!parsed.gaps || parsed.gaps.length === 0) {
           parsed.gaps = ["The answer is not clearly grounded in your document."];
         }
       } else if (grounding < 0.3) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 62);
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 60);
         if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
       }
     }
@@ -1890,13 +1981,14 @@ Return ONLY valid JSON — no markdown, no explanation:
 
     return parsed;
   } catch {
-    const local = localSatisfaction(rootQuestion, latestAnswer, abstract);
+    const local = localSatisfaction(rootQuestion, latestAnswer, abstract, followUpCount);
     if (forceClose) {
       return {
         ...local,
-        verdict: 'satisfied',
+        verdict: local.satisfaction_score >= SAT_THRESHOLD ? 'satisfied' : 'evasive',
         followup_question: null,
-        panelist_remark: "Let's move on from this question.",
+        panelist_remark:
+          "Let's move on — strengthen this part of your study before your actual defense.",
       };
     }
     return local;

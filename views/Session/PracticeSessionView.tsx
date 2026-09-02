@@ -656,7 +656,13 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     setIsThreadEvaluating(false);
     setPanelistRemark(satResult.panelist_remark ?? null);
 
-    const isCapped = currentFollowUpCount >= MAX_FOLLOWUPS;
+    // The evaluator returns no follow-up either when it's satisfied or when it
+    // has decided to stop pressing (follow-up cap / repeated evasion).
+    const evaluatorStopped = !satResult.followup_question;
+    const isCapped =
+      currentFollowUpCount >= MAX_FOLLOWUPS ||
+      (evaluatorStopped && satResult.verdict !== 'satisfied') ||
+      consecutiveEvasiveCount >= 2;
     const isSatisfied = satResult.verdict === 'satisfied' || satResult.satisfaction_score >= SATISFACTION_THRESHOLD;
 
     if (isSatisfied || isCapped) {
