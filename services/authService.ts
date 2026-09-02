@@ -152,11 +152,15 @@ export const loginUser = async (
   }
 };
 
-// Sign-up = email + password only. Nothing is created yet — the backend
-// emails a confirmation link; the account exists only after confirmSignup().
+// Sign-up = email + password (+ school/program/year). Nothing is created yet
+// — the backend emails a confirmation link; the account exists only after
+// confirmSignup().
 export const registerUser = async (params: {
   email: string;
   password: string;
+  school?: string;
+  program?: string;
+  yearLevel?: string;
 }): Promise<{ emailSent: boolean }> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
@@ -164,6 +168,9 @@ export const registerUser = async (params: {
     body: JSON.stringify({
       email: params.email.trim().toLowerCase(),
       password: params.password,
+      school: params.school,
+      program: params.program,
+      yearLevel: params.yearLevel,
     }),
   });
   const data = await res.json().catch(() => ({}));

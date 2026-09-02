@@ -15,8 +15,14 @@ import {
   UploadCloud,
   MessagesSquare,
   Award,
+  Building2,
+  GraduationCap,
+  CalendarDays,
 } from "lucide-react";
 import { registerUser } from "../../services/authService";
+import { SCHOOLS, DEFAULT_SCHOOL } from "../../types";
+
+const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
 
 interface Props {
   onGoToLogin: () => void;
@@ -155,6 +161,9 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [school, setSchool] = useState(DEFAULT_SCHOOL);
+  const [program, setProgram] = useState("");
+  const [yearLevel, setYearLevel] = useState("");
   const [agree, setAgree] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -174,6 +183,18 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       setError("Please enter a valid email address so we can send your confirmation link.");
       return;
     }
+    if (!school) {
+      setError("Please select your school.");
+      return;
+    }
+    if (!program.trim()) {
+      setError("Please enter your program.");
+      return;
+    }
+    if (!yearLevel) {
+      setError("Please select your year level.");
+      return;
+    }
     if (password.length < 6) {
       setError("Password must be at least 6 characters.");
       return;
@@ -189,7 +210,13 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
 
     setLoading(true);
     try {
-      const { emailSent } = await registerUser({ email, password });
+      const { emailSent } = await registerUser({
+        email,
+        password,
+        school,
+        program: program.trim(),
+        yearLevel,
+      });
       setEmailSent(emailSent);
       setSubmitted(true);
     } catch (err: any) {
@@ -322,9 +349,70 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                 />
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Use a real inbox — we send a verification link you must open before
-                your account is activated.
+                Use a real inbox — we send a confirmation link you must open before
+                your account is created.
               </p>
+            </div>
+
+            <div>
+              <label htmlFor="reg-school" className={labelClass}>
+                School
+              </label>
+              <div className="relative">
+                <Building2 className={iconClass} />
+                <select
+                  id="reg-school"
+                  className={fieldClass("pl-10 pr-4")}
+                  value={school}
+                  onChange={(e) => setSchool(e.target.value)}
+                >
+                  {SCHOOLS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="reg-program" className={labelClass}>
+                  Program
+                </label>
+                <div className="relative">
+                  <GraduationCap className={iconClass} />
+                  <input
+                    id="reg-program"
+                    type="text"
+                    className={fieldClass("pl-10 pr-3")}
+                    placeholder="e.g. BSIT"
+                    value={program}
+                    onChange={(e) => setProgram(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="reg-year" className={labelClass}>
+                  Year Level
+                </label>
+                <div className="relative">
+                  <CalendarDays className={iconClass} />
+                  <select
+                    id="reg-year"
+                    className={fieldClass("pl-10 pr-3")}
+                    value={yearLevel}
+                    onChange={(e) => setYearLevel(e.target.value)}
+                  >
+                    <option value="">Select</option>
+                    {YEAR_LEVELS.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             <div

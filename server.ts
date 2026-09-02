@@ -716,7 +716,7 @@ export async function createApp() {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password } = req.body ?? {};
+      const { email, password, school, program, yearLevel } = req.body ?? {};
       const normEmail = String(email ?? "").trim().toLowerCase();
       if (!isAllowedSignupEmail(normEmail)) {
         return res.status(400).json({ message: SIGNUP_DOMAIN_MESSAGE });
@@ -724,6 +724,9 @@ export async function createApp() {
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
       }
+      const s = typeof school === "string" ? school.slice(0, 120) : null;
+      const pr = typeof program === "string" ? program.slice(0, 80) : null;
+      const y = typeof yearLevel === "string" ? yearLevel.slice(0, 40) : null;
 
       // Already a real account?
       const { data: existingUser } = await supabase
@@ -739,7 +742,7 @@ export async function createApp() {
       }
 
       const token = encryptRegPassword(
-        JSON.stringify({ e: normEmail, p: password, t: Date.now() }),
+        JSON.stringify({ e: normEmail, p: password, s, pr, y, t: Date.now() }),
       );
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
       const link = `${appUrl.replace(/\/$/, "")}/?signup=${encodeURIComponent(token)}`;
@@ -767,7 +770,7 @@ export async function createApp() {
       const token = String(req.body?.token ?? "");
       if (!token) return res.status(400).json({ message: "Missing confirmation token." });
 
-      let payload: { e: string; p: string; t: number };
+      let payload: { e: string; p: string; s?: string | null; pr?: string | null; y?: string | null; t: number };
       try {
         payload = JSON.parse(decryptRegPassword(token));
       } catch {
@@ -813,6 +816,9 @@ export async function createApp() {
             email: normEmail,
             fullName: derivedName,
             role: "STUDENT",
+            program: payload.pr || null,
+            yearLevel: payload.y || null,
+            school: payload.s || null,
             isDeleted: false,
             status: "APPROVED",
             createdBy: "SELF_SIGNUP",
