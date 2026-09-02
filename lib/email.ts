@@ -1,74 +1,140 @@
-import nodemailer from "nodemailer";
+// Transactional email over an HTTPS API (port 443), because the Render free
+// tier blocks outbound SMTP ports. Supports Brevo or Resend — whichever key
+// is set. If neither is set the sender is a no-op, so email stays optional
+// and never blocks a request.
+//
+//   Brevo  (recommended): BREVO_API_KEY  + EMAIL_FROM   — send to anyone once
+//                          the sender address is verified in Brevo.
+//   Resend:               RESEND_API_KEY + EMAIL_FROM   — needs a verified
+//                          domain to send to arbitrary recipients (or use
+//                          onboarding@resend.dev to send only to yourself).
 
-// Best-effort transactional email. If SMTP_USER / SMTP_PASS are not set the
-// sender is a no-op, so email is optional and never blocks a request.
+type Provider = "brevo" | "resend" | null;
 
-let cached: nodemailer.Transporter | null = null;
-
-function getTransporter(): nodemailer.Transporter | null {
-  if (cached) return cached;
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) return null;
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  cached = nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? "smtp.gmail.com",
-    port,
-    secure: port === 465, // 465 = implicit TLS, 587 = STARTTLS
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    // Fail fast instead of hanging when the host blocks outbound SMTP.
-    connectionTimeout: 12_000,
-    greetingTimeout: 12_000,
-    socketTimeout: 20_000,
-  });
-  return cached;
+function provider(): Provider {
+  if (process.env.BREVO_API_KEY) return "brevo";
+  if (process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY) return "resend";
+  return null;
 }
 
 export function isEmailConfigured(): boolean {
-  return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return provider() !== null;
 }
 
-// Diagnostic: does the configured SMTP account actually accept our login?
-// Runs an SMTP handshake + auth check WITHOUT sending anything. Never returns
-// the password — only booleans and the provider's error text.
+const APP_URL = process.env.APP_URL || "https://defensa-7ggt.onrender.com";
+const BRAND = "#2563eb";
+
+// EMAIL_FROM is "Name <address>" or just "address".
+function parseFrom(): { name: string; email: string; raw: string } {
+  const raw =
+    process.env.EMAIL_FROM ||
+    (provider() === "resend" ? "Defensa <onboarding@resend.dev>" : "Defensa <no-reply@defensa.app>");
+  const m = raw.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
+  if (m) return { name: m[1] || "Defensa", email: m[2], raw };
+  return { name: "Defensa", email: raw.trim(), raw: `Defensa <${raw.trim()}>` };
+}
+
+// ---- low-level send -------------------------------------------------------
+
+async function sendEmail(opts: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<boolean> {
+  const p = provider();
+  if (!p || !opts.to) {
+    console.log("[email] no provider configured - skipping send");
+    return false;
+  }
+  const from = parseFrom();
+
+  try {
+    if (p === "brevo") {
+      const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "api-key": process.env.BREVO_API_KEY as string,
+          "Content-Type": "application/json",
+          accept: "application/json",
+        },
+        body: JSON.stringify({
+          sender: { name: from.name, email: from.email },
+          to: [{ email: opts.to }],
+          subject: opts.subject,
+          htmlContent: opts.html,
+        }),
+      });
+      if (resp.ok) {
+        console.log("[email] Brevo send ok ->", opts.to);
+        return true;
+      }
+      console.warn("[email] Brevo send failed", resp.status, await resp.text().catch(() => ""));
+      return false;
+    }
+
+    // resend
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: from.raw,
+        to: [opts.to],
+        subject: opts.subject,
+        html: opts.html,
+      }),
+    });
+    if (resp.ok) {
+      console.log("[email] Resend send ok ->", opts.to);
+      return true;
+    }
+    console.warn("[email] Resend send failed", resp.status, await resp.text().catch(() => ""));
+    return false;
+  } catch (e: any) {
+    console.warn("[email] send error:", e?.message ?? e);
+    return false;
+  }
+}
+
+// Diagnostic: is a provider configured and does the API key work? Runs a
+// lightweight authenticated GET — no email sent. Never returns the key.
 export async function checkEmailConnection(): Promise<{
   configured: boolean;
-  host: string | null;
-  port: number | null;
-  user: string | null;
+  provider: string | null;
+  from: string | null;
   ok: boolean;
   error?: string;
 }> {
+  const p = provider();
   const base = {
-    configured: isEmailConfigured(),
-    host: process.env.SMTP_HOST ?? (isEmailConfigured() ? "smtp.gmail.com" : null),
-    port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : isEmailConfigured() ? 587 : null,
-    user: process.env.SMTP_USER ?? null,
+    configured: p !== null,
+    provider: p,
+    from: p ? parseFrom().raw : null,
   };
-  const t = getTransporter();
-  if (!t) return { ...base, ok: false, error: "SMTP_USER / SMTP_PASS not set" };
+  if (!p) return { ...base, ok: false, error: "No BREVO_API_KEY or RESEND_API_KEY set" };
   try {
-    await Promise.race([
-      t.verify(),
-      new Promise((_, rej) =>
-        setTimeout(() => rej(new Error("timeout — the host is likely blocking outbound SMTP on this port")), 15_000),
-      ),
-    ]);
-    return { ...base, ok: true };
+    const resp =
+      p === "brevo"
+        ? await fetch("https://api.brevo.com/v3/account", {
+            headers: { "api-key": process.env.BREVO_API_KEY as string, accept: "application/json" },
+          })
+        : await fetch("https://api.resend.com/domains", {
+            headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY || process.env.EMAIL_API_KEY}` },
+          });
+    if (resp.ok) return { ...base, ok: true };
+    return { ...base, ok: false, error: `${p} API returned ${resp.status}: ${await resp.text().catch(() => "")}`.slice(0, 300) };
   } catch (e: any) {
     return { ...base, ok: false, error: e?.message ?? String(e) };
   }
 }
 
-const FROM = process.env.EMAIL_FROM ?? `Defensa <${process.env.SMTP_USER ?? "no-reply@defensa.app"}>`;
-const APP_URL = process.env.APP_URL ?? "";
-const BRAND = "#2563eb";
+// ---- branded shell ------------------------------------------------------
 
-// Shared responsive shell so every Defensa email looks the same.
 function shell(opts: {
   heading: string;
-  body: string; // inner HTML for the message paragraphs
+  body: string;
   buttonLabel: string;
   buttonHref: string;
   footnote?: string;
@@ -115,35 +181,25 @@ function shell(opts: {
 </html>`;
 }
 
+// ---- public senders (signatures unchanged) -----------------------------
+
 export async function sendVerificationEmail(opts: {
   to: string;
   fullName?: string;
   link: string;
 }): Promise<boolean> {
-  const t = getTransporter();
-  if (!t || !opts.to || !opts.link) {
-    console.log("[email] SMTP not configured or missing data - skipping verification email");
-    return false;
-  }
-  try {
-    await t.sendMail({
-      from: FROM,
-      to: opts.to,
-      subject: "Verify Your Email",
-      html: shell({
-        heading: "Verify Your Email",
-        body: `Welcome${opts.fullName ? `, <strong>${opts.fullName}</strong>` : ""}! Click the button below to verify your account.`,
-        buttonLabel: "Verify Account",
-        buttonHref: opts.link,
-        footnote: "If you did not create a Defensa account, you can safely ignore this email.",
-      }),
-    });
-    console.log("[email] Verification email sent to", opts.to);
-    return true;
-  } catch (e: any) {
-    console.warn("[email] Failed to send verification email:", e?.message ?? e);
-    return false;
-  }
+  if (!opts.to || !opts.link) return false;
+  return sendEmail({
+    to: opts.to,
+    subject: "Verify Your Email",
+    html: shell({
+      heading: "Verify Your Email",
+      body: `Welcome${opts.fullName ? `, <strong>${opts.fullName}</strong>` : ""}! Click the button below to verify your account.`,
+      buttonLabel: "Verify Account",
+      buttonHref: opts.link,
+      footnote: "If you did not create a Defensa account, you can safely ignore this email.",
+    }),
+  });
 }
 
 export async function sendPasswordResetEmail(opts: {
@@ -151,56 +207,34 @@ export async function sendPasswordResetEmail(opts: {
   fullName?: string;
   link: string;
 }): Promise<boolean> {
-  const t = getTransporter();
-  if (!t || !opts.to || !opts.link) {
-    console.log("[email] SMTP not configured or missing data - skipping password reset email");
-    return false;
-  }
-  try {
-    await t.sendMail({
-      from: FROM,
-      to: opts.to,
-      subject: "Reset your Defensa password",
-      html: shell({
-        heading: "Reset your password",
-        body: `We received a request to reset the password for your Defensa account${opts.fullName ? `, <strong>${opts.fullName}</strong>` : ""}. Click the button below to choose a new one. This link expires in one hour.`,
-        buttonLabel: "Reset password",
-        buttonHref: opts.link,
-        footnote: "If you did not request this, ignore this email and your password stays the same.",
-      }),
-    });
-    console.log("[email] Password reset email sent to", opts.to);
-    return true;
-  } catch (e: any) {
-    console.warn("[email] Failed to send password reset email:", e?.message ?? e);
-    return false;
-  }
+  if (!opts.to || !opts.link) return false;
+  return sendEmail({
+    to: opts.to,
+    subject: "Reset your Defensa password",
+    html: shell({
+      heading: "Reset your password",
+      body: `We received a request to reset the password for your Defensa account${opts.fullName ? `, <strong>${opts.fullName}</strong>` : ""}. Click the button below to choose a new one. This link expires in one hour.`,
+      buttonLabel: "Reset password",
+      buttonHref: opts.link,
+      footnote: "If you did not request this, ignore this email and your password stays the same.",
+    }),
+  });
 }
 
 export async function sendGoogleWelcomeEmail(opts: {
   to: string;
   fullName: string;
 }): Promise<void> {
-  const t = getTransporter();
-  if (!t || !opts.to) {
-    console.log("[email] SMTP not configured or no address - skipping welcome email");
-    return;
-  }
-  try {
-    await t.sendMail({
-      from: FROM,
-      to: opts.to,
-      subject: "Welcome to Defensa",
-      html: shell({
-        heading: "Welcome to Defensa",
-        body: `Hello <strong>${opts.fullName || "there"}</strong>, your account is ready. Upload your capstone manuscript and start practising for your oral defense.`,
-        buttonLabel: "Open Defensa",
-        buttonHref: APP_URL || "https://defensa-7ggt.onrender.com",
-        footnote: "If you did not sign in to Defensa, you can ignore this email.",
-      }),
-    });
-    console.log("[email] Google welcome email sent to", opts.to);
-  } catch (e: any) {
-    console.warn("[email] Failed to send welcome email:", e?.message ?? e);
-  }
+  if (!opts.to) return;
+  await sendEmail({
+    to: opts.to,
+    subject: "Welcome to Defensa",
+    html: shell({
+      heading: "Welcome to Defensa",
+      body: `Hello <strong>${opts.fullName || "there"}</strong>, your account is ready. Upload your capstone manuscript and start practising for your oral defense.`,
+      buttonLabel: "Open Defensa",
+      buttonHref: APP_URL,
+      footnote: "If you did not sign in to Defensa, you can ignore this email.",
+    }),
+  });
 }

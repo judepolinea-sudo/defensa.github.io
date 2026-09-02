@@ -35,21 +35,20 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      # --- Transactional email (optional; needed for branded verification /
-      #     password-reset emails). Use a throwaway Gmail + an App Password. ---
-      - key: SMTP_HOST            # smtp.gmail.com
+      # --- Transactional email (verification / password-reset / welcome) ---
+      # Render's free tier BLOCKS outbound SMTP, so we send over an HTTPS API.
+      # Use ONE of Brevo (recommended) or Resend:
+      #   Brevo  — sign up at brevo.com, verify a sender address, make an API
+      #            key. Sends to any recipient. 300 emails/day free.
+      #   Resend — needs a verified domain to send to arbitrary recipients.
+      - key: BREVO_API_KEY        # xkeysib-...   (or use RESEND_API_KEY instead)
         sync: false
-      - key: SMTP_PORT            # 587
+      - key: RESEND_API_KEY       # re_...        (only if not using Brevo)
         sync: false
-      - key: SMTP_USER            # the sending gmail address
-        sync: false
-      - key: SMTP_PASS            # 16-char Google App Password, no spaces
-        sync: false
-      - key: EMAIL_FROM           # e.g.  Defensa <defensa.noreply@gmail.com>
+      - key: EMAIL_FROM           # Defensa <your-verified-sender@gmail.com>
         sync: false
       - key: APP_URL              # https://defensa-7ggt.onrender.com
         sync: false
-      # Set to "true" only once SMTP is configured, to require email
-      # verification before sign-in.
+      # "true" (default) requires a verified email before sign-in; "false" disables.
       - key: REQUIRE_EMAIL_VERIFICATION
         sync: false
