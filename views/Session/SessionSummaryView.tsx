@@ -469,9 +469,36 @@ const SessionSummaryView: React.FC<Props> = ({ result, sessionId, token, onGoDas
                           <p className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-relaxed">"{qa.question}"</p>
                         </div>
                         <div className={`p-8 rounded-[32px] border relative ${isSkipped ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-800' : 'bg-blue-50 dark:bg-blue-500/10/30 border-blue-100'}`}>
-                          <div className="text-[10px] font-black text-blue-400 uppercase mb-4">{isSkipped ? 'User Action' : 'Your Answer'}</div>
+                          <div className="text-[10px] font-black text-blue-400 uppercase mb-4">{isSkipped ? 'User Action' : (qa.threadExchanges && qa.threadExchanges.length > 1 ? 'Final Answer' : 'Your Answer')}</div>
                           <p className={`font-medium leading-relaxed ${isSkipped ? 'text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-300'}`}>{qa.answer}</p>
                         </div>
+
+                        {qa.threadExchanges && qa.threadExchanges.length > 1 && (
+                          <div className="p-6 rounded-[32px] border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                            <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-4">
+                              Full exchange ({qa.threadExchanges.length} turns{qa.followUpsUsed ? `, ${qa.followUpsUsed} follow-up${qa.followUpsUsed !== 1 ? 's' : ''}` : ''})
+                            </div>
+                            <ol className="space-y-4">
+                              {qa.threadExchanges.map((ex, exi) => (
+                                <li key={exi} className="border-l-2 border-slate-200 dark:border-slate-700 pl-4">
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">
+                                    {ex.isFollowUp ? `Follow-up ${exi}` : 'Root question'}
+                                    {typeof ex.satisfactionScore === 'number' && (
+                                      <span className={`ml-2 ${ex.satisfactionScore >= 75 ? 'text-green-600' : ex.satisfactionScore >= 40 ? 'text-amber-600' : 'text-red-500'}`}>
+                                        {Math.round(ex.satisfactionScore)}% satisfied
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">&ldquo;{ex.question}&rdquo;</p>
+                                  <p className="text-sm text-slate-600 dark:text-slate-400">{ex.answer || '(no answer)'}</p>
+                                  {ex.panelistRemark && (
+                                    <p className="text-xs italic text-slate-400 dark:text-slate-500 mt-1">Panelist: {ex.panelistRemark}</p>
+                                  )}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        )}
                       </div>
 
                       <div className={`rounded-[32px] p-8 space-y-8 border ${isSkipped ? 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 opacity-60' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm'}`}>

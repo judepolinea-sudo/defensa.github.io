@@ -83,8 +83,9 @@ const DashboardView: React.FC<Props> = ({
     };
     const headers = [
       'Session Date', 'Project', 'Session Overall Score', 'Question No',
-      'Panelist', 'Category', 'Question', 'Answer', 'Question Score',
-      'Semantic Relevance', 'Keyword Accuracy', 'Clarity', 'Confidence',
+      'Turn', 'Panelist', 'Category', 'Question', 'Answer',
+      'Turn Satisfaction %', 'Final Question Score',
+      'Accuracy', 'Completeness', 'Clarity', 'Confidence',
       'Strengths', 'Improvements',
     ];
     const rows: (string | number)[][] = [];
@@ -92,23 +93,32 @@ const DashboardView: React.FC<Props> = ({
       const date = s.date ? new Date(s.date).toLocaleString() : '';
       (s.history ?? []).forEach((qa, i) => {
         const f = (qa.feedback ?? {}) as any;
-        rows.push([
-          date,
-          s.projectTitle ?? project?.title ?? '',
-          s.overallScore ?? '',
-          i + 1,
-          qa.panelistName ?? '',
-          qa.category ?? '',
-          qa.question ?? '',
-          qa.answer ?? '',
-          f.score ?? '',
-          f.semanticRelevance ?? '',
-          f.keywordAccuracy ?? '',
-          f.clarity ?? '',
-          f.confidenceLevel ?? '',
-          (f.strengths ?? []).join('; '),
-          (f.improvements ?? []).join('; '),
-        ]);
+        const thread = (qa as any).threadExchanges as any[] | undefined;
+        const base = [date, s.projectTitle ?? project?.title ?? '', s.overallScore ?? '', i + 1];
+        const tail = [
+          f.score ?? '', f.semanticRelevance ?? '', f.keywordAccuracy ?? '',
+          f.clarity ?? '', f.confidenceLevel ?? '',
+          (f.strengths ?? []).join('; '), (f.improvements ?? []).join('; '),
+        ];
+        if (Array.isArray(thread) && thread.length > 0) {
+          thread.forEach((ex, exi) => {
+            rows.push([
+              ...base,
+              ex.isFollowUp ? `Follow-up ${exi}` : 'Root',
+              qa.panelistName ?? '',
+              qa.category ?? '',
+              ex.question ?? '',
+              ex.answer ?? '',
+              typeof ex.satisfactionScore === 'number' ? Math.round(ex.satisfactionScore) : '',
+              ...(exi === thread.length - 1 ? tail : ['', '', '', '', '', '', '']),
+            ]);
+          });
+        } else {
+          rows.push([
+            ...base, 'Answer', qa.panelistName ?? '', qa.category ?? '',
+            qa.question ?? '', qa.answer ?? '', '', ...tail,
+          ]);
+        }
       });
     });
     const csv =
@@ -164,10 +174,24 @@ const DashboardView: React.FC<Props> = ({
       );
       (s.history ?? []).forEach((qa, qi) => {
         const f = (qa.feedback ?? {}) as any;
+        const thread = (qa as any).threadExchanges as any[] | undefined;
         write(`Q${qi + 1} [${qa.category ?? ''}] ${qa.question ?? ''}`, 9);
-        write(`Answer: ${qa.answer ?? '(no answer)'}`, 9);
+        if (Array.isArray(thread) && thread.length > 1) {
+          thread.forEach((ex, exi) => {
+            write(
+              `  ${ex.isFollowUp ? `Follow-up ${exi}` : 'Root'}: ${ex.question ?? ''}`,
+              8,
+            );
+            write(`    Answer: ${ex.answer || '(no answer)'}`, 8);
+            if (typeof ex.satisfactionScore === 'number') {
+              write(`    ${Math.round(ex.satisfactionScore)}% satisfied`, 8);
+            }
+          });
+        } else {
+          write(`Answer: ${qa.answer ?? '(no answer)'}`, 9);
+        }
         write(
-          `Score ${f.score ?? '-'}  |  Accuracy ${f.semanticRelevance ?? '-'}  |  Keyword ${f.keywordAccuracy ?? '-'}  |  Clarity ${f.clarity ?? '-'}  |  Confidence ${f.confidenceLevel ?? '-'}`,
+          `Final score ${f.score ?? '-'}  |  Accuracy ${f.semanticRelevance ?? '-'}  |  Completeness ${f.keywordAccuracy ?? '-'}  |  Clarity ${f.clarity ?? '-'}  |  Confidence ${f.confidenceLevel ?? '-'}`,
           8,
         );
       });

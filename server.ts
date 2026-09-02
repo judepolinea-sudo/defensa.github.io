@@ -2338,7 +2338,15 @@ export async function createApp() {
           // Clamp score to integer 0-100 to satisfy DB CHECK constraint
           score: Math.min(100, Math.max(0, Math.round(qa.feedback?.score ?? 0))),
           category: qa.category ?? null,
-          feedback: qa.feedback ?? null,
+          // Stash the follow-up thread inside the feedback JSON so it survives
+          // reload (there is no dedicated column for it).
+          feedback: {
+            ...(qa.feedback ?? {}),
+            _threadExchanges: Array.isArray(qa.threadExchanges) ? qa.threadExchanges : null,
+            _satisfactionScore: qa.satisfactionScore ?? null,
+            _threadVerdict: qa.threadVerdict ?? null,
+            _followUpsUsed: qa.followUpsUsed ?? null,
+          },
           confidence_metrics: qa.feedback?.confidenceMetrics ?? null,
         }));
         const { error: qErr } = await supabase.from("session_questions").insert(questionRows);
@@ -2474,6 +2482,10 @@ export async function createApp() {
             answer: q.answer ?? "",
             category: q.category ?? "",
             panelistName: q.panelist_name ?? null,
+            threadExchanges: Array.isArray(feedback._threadExchanges) ? feedback._threadExchanges : undefined,
+            satisfactionScore: feedback._satisfactionScore ?? undefined,
+            threadVerdict: feedback._threadVerdict ?? undefined,
+            followUpsUsed: feedback._followUpsUsed ?? undefined,
             feedback,
           };
         });

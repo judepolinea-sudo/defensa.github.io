@@ -331,14 +331,16 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     setShowInactivityPrompt(false);
     isInactiveRef.current = false;
 
+    // A defense question deserves real thinking time. Warn only after 3 minutes
+    // of no input, then end 2 minutes after that if there's still no response.
     inactivityWarnRef.current = setTimeout(() => {
       setShowInactivityPrompt(true);
       isInactiveRef.current = true;
       inactivityEndRef.current = setTimeout(() => {
         setShowInactivityPrompt(false);
         completeSession(history);
-      }, 30_000);
-    }, 30_000);
+      }, 120_000);
+    }, 180_000);
   }, [history]);
 
   useEffect(() => {
@@ -1144,7 +1146,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
             </div>
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">Are you still there?</h3>
             <p className="text-slate-400 text-sm mb-7 leading-relaxed">
-              No activity detected for 30 seconds. Your session will auto-save and end in 30 seconds.
+              No activity for a few minutes. Your session will auto-save and end in 2 minutes if there's still no response.
             </p>
             <div className="flex gap-3">
               <button type="button" onClick={() => { resetInactivityTimer(); }}
