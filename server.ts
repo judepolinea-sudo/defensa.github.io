@@ -1274,6 +1274,31 @@ export async function createApp() {
     }
   });
 
+  // Manually mark a user's email as verified (Admin only). For when email
+  // delivery is broken / the student can't receive the link.
+  app.post("/api/users/:uid/verify-email", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Forbidden: admin only." });
+      }
+
+      const { uid } = req.params;
+      const target = await getSupabaseUserByFirebaseUid(uid);
+      if (!target) return res.status(404).json({ message: "User not found" });
+
+      await auth.updateUser(uid, { emailVerified: true });
+      await logAudit(caller.decoded.uid, "EMAIL_VERIFY_MANUAL", "users", uid, {
+        email: target.email,
+      });
+      res.json({ message: `${target.email} marked as verified. They can sign in now.` });
+    } catch (error: any) {
+      console.error("Manual verify error:", error);
+      res.status(500).json({ message: error.message || "Server error" });
+    }
+  });
+
   // Approve a pending self-registration (Admin only)
   app.patch("/api/users/:uid/approve", async (req, res) => {
     try {

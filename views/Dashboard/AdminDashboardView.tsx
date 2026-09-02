@@ -378,6 +378,23 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
 
   const requestDelete = (u: any) => setDeleteTarget(u);
 
+  const verifyUserEmail = async (uid: string, email: string) => {
+    setActionLoading(uid);
+    try {
+      const res = await fetch(`/api/users/${uid}/verify-email`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      toast.success(data.message || `${email} verified.`);
+    } catch (e: any) {
+      toast.error(e.message || "Could not verify that account.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const confirmDeleteProject = async () => {
     if (!projectDeleteTarget) return;
     setActionLoading("delete-project");
@@ -1143,20 +1160,31 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                               </span>
                             </td>
                             <td className="px-8 py-6 text-right">
-                              <motion.button
-                                type="button"
-                                disabled={u.email === user.email}
-                                onClick={() => requestDelete(u)}
-                                className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 rounded-lg transition-colors disabled:opacity-0"
-                                title="Deactivate user"
-                                whileHover={{
-                                  scale: 1.1,
-                                  backgroundColor: "rgba(239,68,68,0.1)",
-                                }}
-                                whileTap={{ scale: 0.9 }}
-                              >
-                                <X className="w-5 h-5" />
-                              </motion.button>
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => verifyUserEmail(u.id, u.email)}
+                                  disabled={actionLoading === u.id}
+                                  className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors disabled:opacity-40"
+                                  title="Mark this user's email as verified"
+                                >
+                                  {actionLoading === u.id ? "…" : "Verify email"}
+                                </button>
+                                <motion.button
+                                  type="button"
+                                  disabled={u.email === user.email}
+                                  onClick={() => requestDelete(u)}
+                                  className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 rounded-lg transition-colors disabled:opacity-0"
+                                  title="Deactivate user"
+                                  whileHover={{
+                                    scale: 1.1,
+                                    backgroundColor: "rgba(239,68,68,0.1)",
+                                  }}
+                                  whileTap={{ scale: 0.9 }}
+                                >
+                                  <X className="w-5 h-5" />
+                                </motion.button>
+                              </div>
                             </td>
                           </motion.tr>
                         ))}
