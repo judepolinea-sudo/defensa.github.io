@@ -157,7 +157,7 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
-}): Promise<{ emailSent: boolean }> => {
+}): Promise<{ emailSent: boolean; note?: string }> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -169,29 +169,39 @@ export const registerUser = async (params: {
   }
 
   let emailSent = data.emailSent === true;
+  let note: string | undefined;
 
   // If the server didn't send our branded email (SMTP not configured), sign
-  // in briefly and trigger Firebase's own verification email instead.
+  // in briefly and trigger Firebase's own verification email instead. Retry
+  // the sign-in once — the just-created account can take a moment to
+  // propagate.
   if (!emailSent) {
-    try {
-      await applyAuthPersistence(false);
-      const cred = await signInWithEmailAndPassword(
-        auth,
-        params.email.trim().toLowerCase(),
-        params.password,
-      );
-      if (!cred.user.emailVerified) {
-        await sendEmailVerification(cred.user);
-        emailSent = true;
+    const email = params.email.trim().toLowerCase();
+    for (let attempt = 0; attempt < 2 && !emailSent; attempt++) {
+      try {
+        await applyAuthPersistence(false);
+        const cred = await signInWithEmailAndPassword(auth, email, params.password);
+        if (cred.user.emailVerified) {
+          emailSent = true; // already verified somehow — nothing to send
+        } else {
+          await sendEmailVerification(cred.user);
+          emailSent = true;
+        }
+      } catch (e: any) {
+        console.warn(`[register] verification send attempt ${attempt + 1} failed:`, e?.code, e?.message);
+        if (e?.code === "auth/too-many-requests") {
+          note =
+            "Too many verification emails were requested for this address recently. Wait about an hour, then use “Resend verification email” on the sign-in screen.";
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1200));
+      } finally {
+        await signOut(auth).catch(() => {});
       }
-    } catch (e) {
-      console.warn("Post-register verification email could not be sent:", e);
-    } finally {
-      await signOut(auth).catch(() => {});
     }
   }
 
-  return { emailSent };
+  return { emailSent, note };
 };
 
 // Asks the backend to re-send the email verification link for a signed-out
