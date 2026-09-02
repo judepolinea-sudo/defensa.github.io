@@ -25,6 +25,33 @@ export function isEmailConfigured(): boolean {
   return !!(process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
+// Diagnostic: does the configured SMTP account actually accept our login?
+// Runs an SMTP handshake + auth check WITHOUT sending anything. Never returns
+// the password — only booleans and the provider's error text.
+export async function checkEmailConnection(): Promise<{
+  configured: boolean;
+  host: string | null;
+  port: number | null;
+  user: string | null;
+  ok: boolean;
+  error?: string;
+}> {
+  const base = {
+    configured: isEmailConfigured(),
+    host: process.env.SMTP_HOST ?? (isEmailConfigured() ? "smtp.gmail.com" : null),
+    port: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : isEmailConfigured() ? 587 : null,
+    user: process.env.SMTP_USER ?? null,
+  };
+  const t = getTransporter();
+  if (!t) return { ...base, ok: false, error: "SMTP_USER / SMTP_PASS not set" };
+  try {
+    await t.verify();
+    return { ...base, ok: true };
+  } catch (e: any) {
+    return { ...base, ok: false, error: e?.message ?? String(e) };
+  }
+}
+
 const FROM = process.env.EMAIL_FROM ?? `Defensa <${process.env.SMTP_USER ?? "no-reply@defensa.app"}>`;
 const APP_URL = process.env.APP_URL ?? "";
 const BRAND = "#2563eb";

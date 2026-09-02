@@ -481,6 +481,20 @@ export async function createApp() {
     res.json({ status: "ok", db: "supabase", auth: "firebase" });
   });
 
+  // Diagnostic: is transactional email configured and does the SMTP login
+  // work? Booleans + the provider's error text only — no secrets.
+  app.get("/api/email/status", async (_req, res) => {
+    try {
+      const { checkEmailConnection } = await import("./lib/email.ts");
+      res.json({
+        ...(await checkEmailConnection()),
+        requireEmailVerification: REQUIRE_EMAIL_VERIFICATION,
+      });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
   // ===============================================================
   // ADMIN SETUP (one-time)
   // Creates the first ADMIN account; blocked once any user exists.
