@@ -157,7 +157,9 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
-}): Promise<{ emailSent: boolean; note?: string }> => {
+}): Promise<{ user: User; emailSent: boolean; note?: string }> => {
+  const email = params.email.trim().toLowerCase();
+
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -168,40 +170,36 @@ export const registerUser = async (params: {
     throw new Error(data.message || "Registration failed. Please try again.");
   }
 
+  // Sign the new user in for real — the account is usable immediately.
+  await applyAuthPersistence(true);
+  const cred = await signInWithEmailAndPassword(auth, email, params.password);
+  const token = await getIdToken(cred.user);
+
+  let user: User;
+  try {
+    user = await fetchProfileOrThrow(token);
+  } catch (err) {
+    await signOut(auth);
+    throw err;
+  }
+
+  // Fire the verification email (best effort — a nudge, not a gate).
   let emailSent = data.emailSent === true;
   let note: string | undefined;
-
-  // If the server didn't send our branded email (SMTP not configured), sign
-  // in briefly and trigger Firebase's own verification email instead. Retry
-  // the sign-in once — the just-created account can take a moment to
-  // propagate.
-  if (!emailSent) {
-    const email = params.email.trim().toLowerCase();
-    for (let attempt = 0; attempt < 2 && !emailSent; attempt++) {
-      try {
-        await applyAuthPersistence(false);
-        const cred = await signInWithEmailAndPassword(auth, email, params.password);
-        if (cred.user.emailVerified) {
-          emailSent = true; // already verified somehow — nothing to send
-        } else {
-          await sendEmailVerification(cred.user);
-          emailSent = true;
-        }
-      } catch (e: any) {
-        console.warn(`[register] verification send attempt ${attempt + 1} failed:`, e?.code, e?.message);
-        if (e?.code === "auth/too-many-requests") {
-          note =
-            "Too many verification emails were requested for this address recently. Wait about an hour, then use “Resend verification email” on the sign-in screen.";
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 1200));
-      } finally {
-        await signOut(auth).catch(() => {});
+  if (!emailSent && !cred.user.emailVerified) {
+    try {
+      await sendEmailVerification(cred.user);
+      emailSent = true;
+    } catch (e: any) {
+      console.warn("[register] sendEmailVerification failed:", e?.code, e?.message);
+      if (e?.code === "auth/too-many-requests") {
+        note =
+          "We couldn't send another verification email just yet (too many recent requests). Use the button on your dashboard in a little while.";
       }
     }
   }
 
-  return { emailSent, note };
+  return { user, emailSent, note };
 };
 
 // Whether the currently signed-in email/password user still needs to verify.
