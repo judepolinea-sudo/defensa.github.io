@@ -693,11 +693,10 @@ export async function createApp() {
   // PUBLIC SELF-REGISTRATION
   // Unauthenticated. Self-service — no admin approval.
   //
-  // Creates ONLY a Firebase Auth user (unverified). NOTHING is written to
-  // Supabase yet — the `users` row is created lazily by verifyAndGetCaller on
-  // the first VERIFIED sign-in. The profile fields entered here (name, school,
-  // program, year) are stashed on a Firebase custom claim until then, so an
-  // account that is never verified leaves no record in Supabase.
+  // Creates the Firebase Auth user (unverified) AND the Supabase `users` row
+  // (role STUDENT, status APPROVED) so the account is visible to the admin and
+  // its data is in Supabase. Sign-in is still blocked until the email is
+  // verified (REQUIRE_EMAIL_VERIFICATION); the admin can also verify manually.
   // ===============================================================
 
   app.post("/api/auth/register", async (req, res) => {
@@ -737,19 +736,11 @@ export async function createApp() {
         return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       }
 
-      const pendingProfile = {
-        fullName: fullName.trim(),
-        school: school || null,
-        program: program || null,
-        yearLevel: yearLevel || null,
-      };
-
       let uid: string;
       if (existingRecord) {
-        // Re-registration before verifying — refresh the password + stash.
+        // Re-registration before verifying — refresh the password.
         uid = existingRecord.uid;
         await auth.updateUser(uid, { password, displayName: fullName.trim() });
-        await auth.setCustomUserClaims(uid, { pendingProfile }).catch(() => {});
       } else {
         try {
           const userRecord = await auth.createUser({
@@ -765,10 +756,39 @@ export async function createApp() {
           }
           throw createErr;
         }
-        await auth.setCustomUserClaims(uid, { pendingProfile }).catch(() => {});
       }
 
-      await logAudit(uid, "SELF_SIGNUP_PENDING", "users", uid, { email: normEmail });
+      // Write the Supabase row now (idempotent-ish — skip if it somehow exists).
+      const { data: alreadyRow } = await supabase
+        .from("users").select("id").eq("firebase_uid", uid).maybeSingle();
+      if (!alreadyRow) {
+        const { error: insErr } = await supabase.from("users").insert(
+          profileToRow({
+            firebaseUid: uid,
+            email: normEmail,
+            fullName: fullName.trim(),
+            role: "STUDENT",
+            program: program || null,
+            yearLevel: yearLevel || null,
+            school: school || null,
+            isDeleted: false,
+            status: "APPROVED",
+            createdBy: "SELF_SIGNUP",
+          }),
+        );
+        if (insErr) {
+          if (!existingRecord) await auth.deleteUser(uid).catch(() => {});
+          console.error("[register] Supabase insert failed:", insErr);
+          const missing = /Could not find the .* column|does not exist/i.test(insErr.message || "");
+          return res.status(500).json({
+            message: missing
+              ? "Sign-up isn't fully set up yet. Ask the administrator to run the pending database migration."
+              : "Could not create your account. Please try again.",
+          });
+        }
+      }
+
+      await logAudit(uid, "SELF_SIGNUP", "users", uid, { email: normEmail });
 
       // Send the branded verification email ourselves (needs SMTP). If SMTP
       // isn't configured, the client falls back to Firebase's own (plain)
