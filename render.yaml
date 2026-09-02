@@ -35,3 +35,21 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # --- Transactional email (optional; needed for branded verification /
+      #     password-reset emails). Use a throwaway Gmail + an App Password. ---
+      - key: SMTP_HOST            # smtp.gmail.com
+        sync: false
+      - key: SMTP_PORT            # 587
+        sync: false
+      - key: SMTP_USER            # the sending gmail address
+        sync: false
+      - key: SMTP_PASS            # 16-char Google App Password, no spaces
+        sync: false
+      - key: EMAIL_FROM           # e.g.  Defensa <defensa.noreply@gmail.com>
+        sync: false
+      - key: APP_URL              # https://defensa-7ggt.onrender.com
+        sync: false
+      # Set to "true" only once SMTP is configured, to require email
+      # verification before sign-in.
+      - key: REQUIRE_EMAIL_VERIFICATION
+        sync: false
