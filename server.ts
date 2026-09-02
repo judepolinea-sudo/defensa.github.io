@@ -3406,12 +3406,15 @@ export async function createApp() {
         ? `[SYSTEM ROLE]\n${system}\n[/SYSTEM ROLE]\n\n${prompt}`
         : prompt;
 
-      // `fast` = interactive question generation: prefer the lowest-latency
-      // providers (Groq LPU first, hosted Flash next) and only fall back to the
-      // slower local model last. Non-fast (evaluation/reports) keeps the
-      // cost-first order: free local model → OpenRouter → Gemini → Groq.
-      // On the interactive (fast) path, bound each provider tightly so a slow or
-      // stalled provider is abandoned quickly and the cascade moves on.
+      // `fast` = interactive question generation. By default the lowest-latency
+      // cloud providers go first (Groq LPU, hosted Flash) and the local model
+      // is a fallback. Set PREFER_OWN_AI=true to put the fine-tuned "Defensa
+      // AI" model FIRST for question generation — it only wins if OWN_AI_URL is
+      // actually reachable; otherwise the cascade falls straight through to the
+      // cloud providers.
+      // Non-fast (evaluation/reports) keeps the cost-first order.
+      const preferOwnAI =
+        String(process.env.PREFER_OWN_AI ?? "").toLowerCase() === "true";
       const netTimeout = fast ? 12_000 : 30_000;
       const runners: Record<string, () => Promise<string>> = {
         OwnAI: () => callOwnAI(prompt, system, fast ? 9_000 : 15_000),
@@ -3420,7 +3423,9 @@ export async function createApp() {
         Groq: () => callGroq(prompt, system, cap, netTimeout),
       };
       const order = fast
-        ? ["Groq", "Gemini", "OpenRouter", "OwnAI"]
+        ? preferOwnAI
+          ? ["OwnAI", "Groq", "Gemini", "OpenRouter"]
+          : ["Groq", "Gemini", "OpenRouter", "OwnAI"]
         : ["OwnAI", "OpenRouter", "Gemini", "Groq"];
 
       let text: string | null = null;
