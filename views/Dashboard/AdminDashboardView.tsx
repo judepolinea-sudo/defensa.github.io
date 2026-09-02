@@ -170,7 +170,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
 
   const [newUser, setNewUser] = useState({
     firstName: "",
-    middleName: "",
     lastName: "",
     email: "",
     password: "",
@@ -316,11 +315,8 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   }, [fetchPendingRequests, fetchResetRequests]);
 
   const handleAddUser = async () => {
-    const fullName = joinName(
-      newUser.firstName,
-      newUser.middleName,
-      newUser.lastName,
-    );
+    const fullName = joinName(newUser.firstName, "", newUser.lastName);
+    const isStudent = newUser.role === UserRole.STUDENT;
     if (
       !newUser.firstName.trim() ||
       !newUser.lastName.trim() ||
@@ -331,7 +327,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       toast.error("Please fill in all required fields.");
       return;
     }
-    if (newUser.role === UserRole.STUDENT && !newUser.program) {
+    if (isStudent && !newUser.program.trim()) {
       toast.error("Department is required for Student accounts.");
       return;
     }
@@ -348,9 +344,9 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
           email: newUser.email,
           password: newUser.password,
           role: newUser.role,
-          program: newUser.program,
-          yearLevel: newUser.yearLevel,
-          school: newUser.school,
+          program: isStudent ? newUser.program : undefined,
+          yearLevel: isStudent ? newUser.yearLevel : undefined,
+          school: isStudent ? newUser.school : undefined,
         }),
       });
       const data = await res.json();
@@ -358,7 +354,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       setIsAddUserOpen(false);
       setNewUser({
         firstName: "",
-        middleName: "",
         lastName: "",
         email: "",
         password: "",
@@ -1983,7 +1978,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                 Create a new institutional account.
               </p>
               <div className="space-y-5">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
                       First Name *
@@ -1995,20 +1990,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                       value={newUser.firstName}
                       onChange={(e) =>
                         setNewUser({ ...newUser, firstName: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
-                      Middle
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
-                      placeholder="—"
-                      value={newUser.middleName}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, middleName: e.target.value })
                       }
                     />
                   </div>
@@ -2042,34 +2023,36 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                     <option value={UserRole.ADMIN}>Administrator</option>
                   </select>
                 </div>
+                {newUser.role === UserRole.STUDENT && (
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                      School *
+                    </label>
+                    <select
+                      className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
+                      value={newUser.school}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, school: e.target.value })
+                      }
+                    >
+                      {SCHOOLS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
-                    School *
-                  </label>
-                  <select
-                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
-                    value={newUser.school}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, school: e.target.value })
-                    }
-                  >
-                    {SCHOOLS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
-                    Institutional Email *
+                    Email Address *
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                     <input
                       type="email"
                       className="w-full pl-12 pr-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
-                      placeholder="username@nu-clark.edu.ph"
+                      placeholder="name@email.com"
                       value={newUser.email}
                       onChange={(e) =>
                         setNewUser({ ...newUser, email: e.target.value })
@@ -2094,50 +2077,54 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                     />
                   </div>
                 </div>
-                <div>
-                  <label
-                    htmlFor="new-user-dept"
-                    className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2"
-                  >
-                    Department *
-                  </label>
-                  <div className="relative">
-                    <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                    <input
-                      id="new-user-dept"
-                      type="text"
-                      className="w-full pl-12 pr-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
-                      placeholder="Ex. BSIT"
-                      value={newUser.program}
-                      onChange={(e) =>
-                        setNewUser({ ...newUser, program: e.target.value })
-                      }
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label
-                    htmlFor="new-user-year"
-                    className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2"
-                  >
-                    Year Level
-                  </label>
-                  <select
-                    id="new-user-year"
-                    className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
-                    value={newUser.yearLevel}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, yearLevel: e.target.value })
-                    }
-                  >
-                    <option value="">Select year level...</option>
-                    {["3rd Year", "4th Year"].map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {newUser.role === UserRole.STUDENT && (
+                  <>
+                    <div>
+                      <label
+                        htmlFor="new-user-dept"
+                        className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2"
+                      >
+                        Department *
+                      </label>
+                      <div className="relative">
+                        <GraduationCap className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                        <input
+                          id="new-user-dept"
+                          type="text"
+                          className="w-full pl-12 pr-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
+                          placeholder="Ex. BSIT"
+                          value={newUser.program}
+                          onChange={(e) =>
+                            setNewUser({ ...newUser, program: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="new-user-year"
+                        className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2"
+                      >
+                        Year Level
+                      </label>
+                      <select
+                        id="new-user-year"
+                        className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
+                        value={newUser.yearLevel}
+                        onChange={(e) =>
+                          setNewUser({ ...newUser, yearLevel: e.target.value })
+                        }
+                      >
+                        <option value="">Select year level...</option>
+                        {["3rd Year", "4th Year"].map((y) => (
+                          <option key={y} value={y}>
+                            {y}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
                 <motion.button
                   type="button"
                   disabled={actionLoading === "add"}
