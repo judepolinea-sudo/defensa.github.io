@@ -185,10 +185,13 @@ export const registerUser = async (params: {
       emailSent = true;
     }
   } catch (e: any) {
-    console.warn("[register] verification email failed:", e?.code, e?.message);
-    if (e?.code === "auth/too-many-requests") {
+    const code = e?.code || "unknown";
+    console.warn("[register] verification email failed:", code, e?.message);
+    if (code === "auth/too-many-requests") {
       note =
-        "Your account was created, but we couldn't send another verification email right now (too many recent requests). Wait about an hour, then use “Resend verification email” on the sign-in screen.";
+        "Your account was created, but too many verification emails have been requested recently — Firebase is blocking sends for about an hour. Try again later, or ask the admin to verify you.";
+    } else {
+      note = `Your account was created, but the verification email could not be sent (${code}). Use “Resend verification email” on the sign-in screen, or ask the admin to verify you.`;
     }
   } finally {
     await signOut(auth).catch(() => {});
