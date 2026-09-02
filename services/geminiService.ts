@@ -1083,9 +1083,18 @@ export const generateDynamicQuestion = async (
   let docChunk: string;
   if (ragChunks.length > 0) {
     const query = `${targetSection} ${lastQuestion} ${answerForQuery}`.trim() || targetSection;
-    const hits = retrieveRelevantChunksImproved(query, ragChunks, 4);
-    const picked = (hits.length > 0 ? hits : ragChunks).map((c) => c.text).join("\n");
-    docChunk = picked.substring(0, 1800);
+    const hits = retrieveRelevantChunksImproved(query, ragChunks, 6)
+      .filter((c) => !looksLikeReferenceList(c.text));
+    const usable = hits.length > 0 ? hits : ragChunks.filter((c) => !looksLikeReferenceList(c.text));
+    const picked = (usable.length > 0 ? usable : ragChunks).slice(0, 4).map((c) => c.text).join("\n");
+    // Drop individual lines that are clearly a reference-list entry, so a stray
+    // citation inside an otherwise-relevant chunk can't become the question.
+    docChunk = picked
+      .split(/\n+/)
+      .filter((line) => !looksLikeReferenceList(line) && !/^\s*\[\d+\]\s/.test(line))
+      .join("\n")
+      .substring(0, 1800);
+    if (docChunk.trim().length < 60) docChunk = picked.substring(0, 1800);
   } else {
     docChunk = abstract.substring(0, 1800);
   }
@@ -1140,6 +1149,7 @@ RULES:
 - The subject must come from what "${targetSection}" of the document above actually says. Put the exact phrase you are probing in source_excerpt.
 - Do NOT ask about scalability, security, sampling, ROI, market fit, ethics, statistical power, or any topic your specialty suggests UNLESS the document itself raises it.
 - Apply your angle to that document content: same facts from the paper, your kind of scrutiny.
+- NEVER build a question from a citation, reference-list entry, publisher, place of publication, page numbers, DOI, or the year a cited work was published (e.g. "Mahwah, NJ: Lawrence Erlbaum, 2007" is bibliographic metadata, not a claim the student is defending). Probe the student's own argument, method, data, or design decision.
 - Ask ONE question, specific enough that it would make no sense asked about any other paper.
 
 Return ONLY this JSON:
@@ -1440,6 +1450,27 @@ function tokenizeForSearch(text: string): string[] {
   return (text.toLowerCase().match(/\b[a-z]{3,}\b/g) || []);
 }
 
+// A chunk that is mostly a bibliography / works-cited list — publisher names,
+// "et al.", page ranges, DOIs, year-in-parens citations. Questions must never
+// be built from these (e.g. "You base your Objectives on 'Mahwah, NJ: Lawrence
+// Erlbaum, 2007'" — a publisher location is not a claim).
+export function looksLikeReferenceList(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  if (t.length < 40) return false;
+  let hits = 0;
+  if (/\bet al\.?/.test(t)) hits++;
+  if (/\bpp?\.\s*\d+/.test(t) || /\bvol\.\s*\d+/.test(t) || /\bno\.\s*\d+/.test(t)) hits++;
+  if (/\bdoi:|https?:\/\/(dx\.)?doi\.org/.test(t)) hits++;
+  if (/\b(lawrence erlbaum|springer|elsevier|routledge|sage publications|ieee|acm|wiley|mcgraw-hill|prentice hall|o'reilly|mit press)\b/.test(t)) hits++;
+  if (/\b(mahwah|hoboken|thousand oaks|new york|london|berlin)\s*,\s*(nj|ny|ca|usa|uk)\b/.test(t)) hits++;
+  // many "Name, A. (2007)." style citation openers
+  const citeOpeners = (t.match(/[a-z]+,\s+[a-z]\.\s*(?:[a-z]\.\s*)?\(?\d{4}\)?/g) || []).length;
+  if (citeOpeners >= 2) hits += 2;
+  const years = (t.match(/\b(19|20)\d{2}\b/g) || []).length;
+  if (years >= 4 && t.length < 1400) hits++;
+  return hits >= 2;
+}
+
 export const retrieveRelevantChunksImproved = (
   query: string,
   chunks: RagChunk[],
@@ -1730,7 +1761,7 @@ export interface SatisfactionResult {
   panelist_remark: string;
 }
 
-const SAT_THRESHOLD = 75;
+const SAT_THRESHOLD = 65;
 
 const STOP = new Set([
   "the","a","an","is","are","was","were","this","that","these","those","which","with","for",
@@ -1765,6 +1796,8 @@ function restateFollowup(rootQuestion: string, attempt = 0): string {
     "That doesn't answer the question. Let me put it plainly:",
     "You still haven't addressed it. Once more:",
     "I need a direct answer to this:",
+    "We're not moving on until this is answered:",
+    "Let's try again — answer this directly:",
   ];
   return `${lead[Math.min(attempt, lead.length - 1)]} ${q}`;
 }
@@ -1799,28 +1832,32 @@ function localSatisfaction(
   const grounding = documentGrounding(latestAnswer, sourceText);
   const hasSpecifics =
     /\b\d/.test(latestAnswer) ||
-    /for example|such as|because|method|methodology|data|result|finding|survey|respondent|sample|analysis/i.test(latestAnswer);
+    /for example|such as|because|method|methodology|data|result|finding|survey|respondent|sample|analysis|framework|model|algorithm|classifier|accuracy|evaluat/i.test(latestAnswer);
+  const hasConnectives =
+    /\b(therefore|because|however|thus|consequently|specifically|in particular|as a result|for instance)\b/i.test(latestAnswer);
 
   // On-topic signal: does the answer engage with the question / the paper?
   const relevance = Math.max(qOverlap, grounding);
 
   let score =
-    10 +
-    Math.min(words.length, 60) * 0.25 +
-    qOverlap * 26 +
-    grounding * 30 +
-    (hasSpecifics ? 8 : 0);
+    14 +
+    Math.min(words.length, 90) * 0.30 +
+    qOverlap * 22 +
+    grounding * 24 +
+    (hasSpecifics ? 12 : 0) +
+    (hasConnectives ? 5 : 0) +
+    (words.length >= 40 ? 6 : 0);
 
-  // Relevance gates — an answer that doesn't engage the question can't score
-  // as "partial", no matter how long or fluent it is.
-  if (relevance < 0.1) score = Math.min(score, 15);
-  else if (relevance < 0.2) score = Math.min(score, 34);
-  else if (grounding < 0.2) score = Math.min(score, 42);
-  else if (grounding < 0.35) score = Math.min(score, 58);
+  // Relevance gates — an answer that doesn't engage the question at all can't
+  // score as "partial". These stay strict; the grounding caps below are gentle.
+  if (relevance < 0.08) score = Math.min(score, 14);
+  else if (relevance < 0.16) score = Math.min(score, 34);
+  else if (grounding < 0.12) score = Math.min(score, 52);
+  else if (grounding < 0.24) score = Math.min(score, 66);
 
-  score = Math.round(Math.max(4, Math.min(88, score)));
+  score = Math.round(Math.max(4, Math.min(95, score)));
   const satisfied = score >= SAT_THRESHOLD;
-  const weak = grounding < 0.35;
+  const weak = grounding < 0.28;
   const fu = [
     weak
       ? "Tie that to your own study. What does your document actually report on this point?"
@@ -1924,7 +1961,7 @@ Return ONLY valid JSON — no markdown, no explanation:
 }`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 400, timeoutMs: 15_000 });
+    const raw = await callServerAI(prompt, SYSTEM_EVALUATOR, { fast: true, maxTokens: 420, timeoutMs: 22_000 });
     const parsed = parseAIJson(raw) as SatisfactionResult;
 
     // Enforce force-close regardless of what AI returned
@@ -1950,12 +1987,13 @@ Return ONLY valid JSON — no markdown, no explanation:
       }
     }
 
-    // Document-grounding clamp: a small model will happily reward a confident,
-    // fluent answer that has nothing to do with the student's actual paper.
+    // Document-grounding clamp: only bite when the answer barely touches the
+    // paper at all. A solid answer that discusses the study's framework or
+    // rationale in its own words should not be capped into follow-up hell.
     if (!forceClose && !badAnswer && abstract && abstract.trim().length > 40) {
       const grounding = documentGrounding(latestAnswer, abstract);
-      if (grounding < 0.15) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 35);
+      if (grounding < 0.1) {
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 40);
         if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
         if (!parsed.followup_question) {
           parsed.followup_question =
@@ -1964,18 +2002,20 @@ Return ONLY valid JSON — no markdown, no explanation:
         if (!parsed.gaps || parsed.gaps.length === 0) {
           parsed.gaps = ["The answer is not clearly grounded in your document."];
         }
-      } else if (grounding < 0.3) {
-        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 60);
-        if (parsed.verdict === 'satisfied') parsed.verdict = 'needs_followup';
+      } else if (grounding < 0.22) {
+        parsed.satisfaction_score = Math.min(parsed.satisfaction_score, 66);
+        if (parsed.verdict === 'satisfied' && parsed.satisfaction_score < SAT_THRESHOLD) {
+          parsed.verdict = 'needs_followup';
+        }
       }
     }
 
     // Ensure verdict matches score if AI was inconsistent
-    if (!forceClose && parsed.satisfaction_score >= 75 && parsed.verdict !== 'satisfied') {
+    if (!forceClose && parsed.satisfaction_score >= SAT_THRESHOLD && parsed.verdict !== 'satisfied') {
       parsed.verdict = 'satisfied';
       parsed.followup_question = null;
     }
-    if (!forceClose && parsed.satisfaction_score < 75 && parsed.verdict === 'satisfied') {
+    if (!forceClose && parsed.satisfaction_score < SAT_THRESHOLD && parsed.verdict === 'satisfied') {
       parsed.verdict = 'needs_followup';
     }
 

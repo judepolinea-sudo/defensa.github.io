@@ -82,7 +82,7 @@ const MASTERY_THRESHOLD: Record<string, number> = {
 };
 
 const MAX_FOLLOWUPS = 3;
-const SATISFACTION_THRESHOLD = 75;
+const SATISFACTION_THRESHOLD = 65;
 
 const DIFFICULTY_META: Record<string, { color: string; bg: string; border: string; dot: string }> = {
   Easy:     { color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200', dot: 'bg-emerald-500' },
@@ -668,15 +668,24 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     const isSatisfied = satResult.verdict === 'satisfied' || satResult.satisfaction_score >= SATISFACTION_THRESHOLD;
 
     if (isSatisfied || isCapped) {
-      // Thread complete — record final satisfaction score and run rubric eval
-      const finalScore = satResult.satisfaction_score;
+      // Score the thread on the student's BEST answer, not whatever they typed
+      // last. A strong opening answer must not be dragged to zero by a
+      // frustrated one-word reply at the end of a long follow-up chain.
+      const bestEx = newExchanges.reduce((a, b) =>
+        (b.satisfactionScore ?? 0) >= (a.satisfactionScore ?? 0) ? b : a,
+      );
+      const bestAnswer =
+        (bestEx.satisfactionScore ?? 0) > (satResult.satisfaction_score ?? 0)
+          ? bestEx.answer
+          : capturedAnswer;
+      const finalScore = Math.max(satResult.satisfaction_score, bestEx.satisfactionScore ?? 0);
       setThreadSatisfactionScore(finalScore);
-      setThreadVerdict(isSatisfied ? 'satisfied' : 'capped');
-      if (isCapped && !isSatisfied) {
+      setThreadVerdict(isSatisfied || finalScore >= SATISFACTION_THRESHOLD ? 'satisfied' : 'capped');
+      if (isCapped && finalScore < SATISFACTION_THRESHOLD) {
         setCappedSections(prev => new Set([...prev, targetSection]));
       }
-      threadFinalAnswerRef.current = capturedAnswer;
-      await runEvaluation(capturedAnswer);
+      threadFinalAnswerRef.current = bestAnswer;
+      await runEvaluation(bestAnswer);
     } else {
       // Follow-up needed
       const newEvasiveCount = satResult.verdict === 'evasive' ? consecutiveEvasiveCount + 1 : 0;
