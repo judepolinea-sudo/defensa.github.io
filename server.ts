@@ -216,36 +216,40 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
     return { decoded, profile: rowToProfile(row) };
   }
 
-  // No Supabase profile yet. Email/password accounts stay admin-only — the
-  // nu-clark.edu.ph account-creation flow is unchanged. Google sign-ins are
-  // a separate, self-service path: any Google account gets an account
-  // auto-provisioned as STUDENT on first login.
-  if (decoded.firebase?.sign_in_provider !== "google.com") return null;
+  // No Supabase profile yet. Two self-service paths auto-provision a STUDENT
+  // row here, and BOTH require a verified email:
+  //   • Google sign-in — any Google account, first login.
+  //   • Email/password self sign-up — the row is created only now, on the
+  //     first VERIFIED sign-in, so an unverified sign-up leaves no record in
+  //     Supabase. The name/school/etc. entered at sign-up are carried on a
+  //     Firebase custom claim (`pendingProfile`) until this point.
+  const provider = decoded.firebase?.sign_in_provider;
+  if (provider !== "google.com" && provider !== "password") return null;
   if (decoded.email_verified === false) return null;
 
-  // Google sign-in works for any Google account. The @nu-clark.edu.ph rule
-  // applies only to the email/password self-registration form.
-
+  const pending = (decoded as any).pendingProfile ?? {};
   const { data: created, error: createErr } = await supabase
     .from("users")
     .insert(
       profileToRow({
         firebaseUid: decoded.uid,
         email: decoded.email ?? "",
-        fullName: decoded.name || decoded.email || "Student",
+        fullName: decoded.name || pending.fullName || decoded.email || "Student",
         role: "STUDENT",
+        program: pending.program ?? null,
+        yearLevel: pending.yearLevel ?? null,
+        school: pending.school ?? null,
         isDeleted: false,
-        createdBy: "GOOGLE_AUTO_SIGNUP",
+        status: "APPROVED",
+        createdBy: provider === "google.com" ? "GOOGLE_AUTO_SIGNUP" : "SELF_SIGNUP",
       }),
     )
     .select()
     .single();
 
   if (createErr) {
-    // Unique violation on firebase_uid — a concurrent request for this same
-    // first-time Google sign-in already created the row (the popup/redirect
-    // login call and the onAuthStateChanged listener can both independently
-    // resolve the profile, so they can race). Re-fetch instead of failing.
+    // Unique violation on firebase_uid — a concurrent request already created
+    // the row (the login call and the onAuthStateChanged listener can race).
     if (createErr.code === "23505") {
       const { data: existing } = await supabase
         .from("users")
@@ -257,19 +261,28 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
         return { decoded, profile: rowToProfile(existing) };
       }
     }
-    console.error("Google auto-signup failed:", createErr.message);
+    console.error("Self-signup provisioning failed:", createErr.message);
     return null;
   }
   if (!created) return null;
 
-  await logAudit(decoded.uid, "GOOGLE_AUTO_SIGNUP", "users", decoded.uid, {
-    email: decoded.email,
-  });
+  // Clear the stash claim now that the real row exists.
+  if (provider === "password") {
+    await auth.setCustomUserClaims(decoded.uid, null).catch(() => {});
+  }
+
+  await logAudit(
+    decoded.uid,
+    provider === "google.com" ? "GOOGLE_AUTO_SIGNUP" : "SELF_SIGNUP",
+    "users",
+    decoded.uid,
+    { email: decoded.email },
+  );
 
   // Fire-and-forget welcome email (no-op unless SMTP is configured).
   sendGoogleWelcomeEmail({
     to: decoded.email ?? "",
-    fullName: decoded.name || decoded.email || "Student",
+    fullName: created.full_name || decoded.email || "Student",
   }).catch(() => {});
 
   return { decoded, profile: rowToProfile(created) };
@@ -538,14 +551,22 @@ export async function createApp() {
         .single();
 
       if (!row) {
-        // No Supabase profile yet. For a Google sign-in this is a first login:
-        // verifyAndGetCaller auto-provisions a STUDENT account (and is race-safe
-        // against the parallel onAuthStateChanged call). Email/password accounts
-        // still require an admin to create them first, and the @nu-clark.edu.ph
-        // rule applies only to the email/password registration form.
-        if (decoded.firebase?.sign_in_provider === "google.com") {
+        // No Supabase profile yet.
+        //  • Google, or a self-signed-up email/password account whose email is
+        //    now verified → verifyAndGetCaller provisions the real STUDENT row.
+        //  • A self-signed-up account that hasn't verified yet → tell the login
+        //    screen so it can show the "verify your email" message + resend.
+        const provider = decoded.firebase?.sign_in_provider;
+        if (provider === "google.com" || (provider === "password" && decoded.email_verified === true)) {
           const caller = await verifyAndGetCaller(authHeader);
           if (caller) return res.json({ user: caller.profile });
+        }
+        if (provider === "password" && decoded.email_verified === false) {
+          return res.status(403).json({
+            message:
+              "Please verify your email address first. We sent a verification link to your inbox — open it, then sign in again.",
+            code: "EMAIL_NOT_VERIFIED",
+          });
         }
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -672,17 +693,18 @@ export async function createApp() {
 
   // ===============================================================
   // PUBLIC SELF-REGISTRATION
-  // Unauthenticated. Self-service — no admin approval. Creates the Firebase
-  // Auth user and the Supabase `users` row immediately (role STUDENT, status
-  // APPROVED) but leaves the account UNVERIFIED. The student must click the
-  // email verification link before they can sign in (enforced in
-  // verifyAndGetCaller / /api/auth/me). Restricted to the allowed sign-up
-  // domain(s).
+  // Unauthenticated. Self-service — no admin approval.
+  //
+  // Creates ONLY a Firebase Auth user (unverified). NOTHING is written to
+  // Supabase yet — the `users` row is created lazily by verifyAndGetCaller on
+  // the first VERIFIED sign-in. The profile fields entered here (name, school,
+  // program, year) are stashed on a Firebase custom claim until then, so an
+  // account that is never verified leaves no record in Supabase.
   // ===============================================================
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, fullName, program, yearLevel, school, phone } = req.body;
+      const { email, password, fullName, program, yearLevel, school } = req.body;
       if (!email || !password || !fullName) {
         return res.status(400).json({
           message: "Missing required fields: email, password, fullName",
@@ -698,75 +720,60 @@ export async function createApp() {
       if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 120) {
         return res.status(400).json({ message: "Please provide your full name." });
       }
-      // Optional PH mobile number: 10 digits after +63, starting with 9.
-      const normPhone = String(phone ?? "").replace(/\D/g, "");
-      if (normPhone && !/^9\d{9}$/.test(normPhone)) {
-        return res.status(400).json({
-          message: "Enter a valid mobile number (10 digits, starting with 9).",
-        });
-      }
 
-      // Already a real account?
+      // Existing verified member?
       const { data: existingUser } = await supabase
         .from("users").select("id").eq("email", normEmail).maybeSingle();
       if (existingUser) {
         return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       }
+
+      // A Firebase user may already exist from an earlier, unverified sign-up.
+      let existingRecord: admin.auth.UserRecord | null = null;
       try {
-        await auth.getUserByEmail(normEmail);
-        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
+        existingRecord = await auth.getUserByEmail(normEmail);
       } catch (e: any) {
         if (e.code !== "auth/user-not-found") throw e;
       }
+      if (existingRecord?.emailVerified) {
+        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
+      }
 
-      // Create the Firebase Auth account — unverified.
-      let userRecord;
-      try {
-        userRecord = await auth.createUser({
-          email: normEmail,
-          password,
-          displayName: fullName.trim(),
-          emailVerified: false,
-        });
-      } catch (createErr: any) {
-        if (createErr.code === "auth/email-already-exists") {
-          return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
+      const pendingProfile = {
+        fullName: fullName.trim(),
+        school: school || null,
+        program: program || null,
+        yearLevel: yearLevel || null,
+      };
+
+      let uid: string;
+      if (existingRecord) {
+        // Re-registration before verifying — refresh the password + stash.
+        uid = existingRecord.uid;
+        await auth.updateUser(uid, { password, displayName: fullName.trim() });
+        await auth.setCustomUserClaims(uid, { pendingProfile }).catch(() => {});
+      } else {
+        try {
+          const userRecord = await auth.createUser({
+            email: normEmail,
+            password,
+            displayName: fullName.trim(),
+            emailVerified: false,
+          });
+          uid = userRecord.uid;
+        } catch (createErr: any) {
+          if (createErr.code === "auth/email-already-exists") {
+            return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
+          }
+          throw createErr;
         }
-        throw createErr;
+        await auth.setCustomUserClaims(uid, { pendingProfile }).catch(() => {});
       }
 
-      const { error: insErr } = await supabase.from("users").insert(
-        profileToRow({
-          firebaseUid: userRecord.uid,
-          email: normEmail,
-          fullName: fullName.trim(),
-          role: "STUDENT",
-          program: program || null,
-          yearLevel: yearLevel || null,
-          school: school || null,
-          phone: normPhone || null,
-          isDeleted: false,
-          status: "APPROVED",
-          createdBy: "SELF_SIGNUP",
-        }),
-      );
-      if (insErr) {
-        // Roll back the Firebase account so a retry can succeed cleanly — the
-        // account only counts as created once the Supabase row is written.
-        await auth.deleteUser(userRecord.uid).catch(() => {});
-        console.error("[register] Supabase insert failed:", insErr);
-        const missing = /Could not find the .* column|does not exist/i.test(insErr.message || "");
-        return res.status(500).json({
-          message: missing
-            ? "Sign-up isn't fully set up yet. Ask the administrator to run the pending database migration."
-            : "Could not create your account. Please try again.",
-        });
-      }
+      await logAudit(uid, "SELF_SIGNUP_PENDING", "users", uid, { email: normEmail });
 
-      await logAudit(userRecord.uid, "SELF_SIGNUP", "users", userRecord.uid, { email: normEmail });
-
-      // Send the verification link (best-effort; the client also triggers a
-      // Firebase-native send on the first blocked sign-in).
+      // Send the verification link. Best-effort server-side (needs SMTP); the
+      // client also fires Firebase's own sendEmailVerification right after this.
       try {
         const link = await auth.generateEmailVerificationLink(normEmail);
         await sendVerificationEmail({ to: normEmail, fullName: fullName.trim(), link });

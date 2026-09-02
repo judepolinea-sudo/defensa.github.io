@@ -155,7 +155,6 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
-  phone?: string;
 }): Promise<void> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
@@ -165,6 +164,24 @@ export const registerUser = async (params: {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.message || "Registration failed. Please try again.");
+  }
+
+  // Sign in just long enough to trigger Firebase's own verification email
+  // (works without any SMTP configured), then sign back out.
+  try {
+    await applyAuthPersistence(false);
+    const cred = await signInWithEmailAndPassword(
+      auth,
+      params.email.trim().toLowerCase(),
+      params.password,
+    );
+    if (!cred.user.emailVerified) {
+      await sendEmailVerification(cred.user);
+    }
+  } catch (e) {
+    console.warn("Post-register verification email could not be sent:", e);
+  } finally {
+    await signOut(auth).catch(() => {});
   }
 };
 

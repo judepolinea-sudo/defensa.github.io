@@ -158,7 +158,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [school, setSchool] = useState(DEFAULT_SCHOOL);
@@ -182,11 +181,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Please enter a valid email address so we can send your verification link.");
-      return;
-    }
-    const digits = phone.replace(/\D/g, "");
-    if (digits && !/^9\d{9}$/.test(digits)) {
-      setError("Enter a valid mobile number: 10 digits starting with 9.");
       return;
     }
     if (!school) {
@@ -213,7 +207,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
         password,
         fullName: joinName(firstName, "", lastName),
         school,
-        phone: digits || undefined,
       });
       setSubmitted(true);
     } catch (err: any) {
@@ -401,34 +394,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                 Use a real inbox — we send a verification link you must open before
                 your account is activated.
               </p>
-            </div>
-
-            <div>
-              <label htmlFor="reg-phone" className={labelClass}>
-                Mobile Number
-              </label>
-              <div className="relative flex">
-                <span
-                  className={`inline-flex items-center px-3 rounded-l-xl border text-sm font-semibold ${
-                    isDarkPanel
-                      ? "bg-[#1c2130] border-white/10 text-slate-400"
-                      : "bg-slate-100 border-slate-200 text-slate-500"
-                  }`}
-                >
-                  +63
-                </span>
-                <input
-                  id="reg-phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  maxLength={10}
-                  className={fieldClass("px-4 rounded-l-none")}
-                  placeholder="9XXXXXXXXX"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                />
-              </div>
             </div>
 
             <div
