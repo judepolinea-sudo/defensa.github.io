@@ -17,8 +17,73 @@ import {
   logoutUser,
   getSessionToken,
   checkGoogleRedirectResult,
+  applyEmailActionCode,
 } from "./services/authService";
 import { startPresence, stopPresence } from "./services/presenceService";
+
+// Handles the ?mode=verifyEmail&oobCode=... link Firebase puts in the
+// verification email, landing the user in a branded Defensa page.
+const EmailActionView: React.FC<{ oobCode: string; onDone: () => void }> = ({
+  oobCode,
+  onDone,
+}) => {
+  const [state, setState] = useState<"working" | "ok" | "error">("working");
+  useEffect(() => {
+    applyEmailActionCode(oobCode)
+      .then(() => setState("ok"))
+      .catch(() => setState("error"));
+  }, [oobCode]);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen p-4 bg-slate-50">
+      <div className="w-full max-w-md bg-white rounded-3xl p-10 shadow-xl text-center">
+        {state === "working" && (
+          <>
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Verifying your email…</h2>
+          </>
+        )}
+        {state === "ok" && (
+          <>
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+              ✓
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Email verified</h2>
+            <p className="text-slate-500 mb-8">Your Defensa account is confirmed.</p>
+            <button
+              type="button"
+              onClick={onDone}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
+            >
+              Continue to Defensa
+            </button>
+          </>
+        )}
+        {state === "error" && (
+          <>
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+              !
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Link expired</h2>
+            <p className="text-slate-500 mb-8">
+              This verification link is invalid or already used. Sign in and use the
+              banner on your dashboard to send a fresh one.
+            </p>
+            <button
+              type="button"
+              onClick={onDone}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
+            >
+              Go to Sign In
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 async function fetchGroupProject(
   token: string,
@@ -65,6 +130,13 @@ function getRoleView(role: UserRole): ViewState {
 }
 
 const App: React.FC = () => {
+  // A Firebase account-action link (email verification) landed us here.
+  const [emailActionCode, setEmailActionCode] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const p = new URLSearchParams(window.location.search);
+    return p.get("mode") === "verifyEmail" ? p.get("oobCode") : null;
+  });
+
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.LOADING);
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -240,6 +312,21 @@ const App: React.FC = () => {
       console.error("Logout failed:", error);
     }
   };
+
+  if (emailActionCode) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
+        <EmailActionView
+          oobCode={emailActionCode}
+          onDone={() => {
+            window.history.replaceState(null, "", window.location.pathname);
+            setEmailActionCode(null);
+            setCurrentView(user ? getRoleView(user.role) : ViewState.LOGIN);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">

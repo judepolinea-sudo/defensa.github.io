@@ -7,6 +7,8 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   sendEmailVerification,
+  applyActionCode,
+  checkActionCode,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -141,7 +143,7 @@ export const loginUser = async (
     // (re)send the verification email via Firebase's own delivery — this
     // works even when the server has no SMTP configured.
     if (err?.code === "EMAIL_NOT_VERIFIED" && !userCredential.user.emailVerified) {
-      await sendEmailVerification(userCredential.user).catch((e) =>
+      await sendVerify(userCredential.user).catch((e) =>
         console.warn("sendEmailVerification failed:", e?.code, e?.message),
       );
     }
@@ -188,7 +190,7 @@ export const registerUser = async (params: {
   let note: string | undefined;
   if (!emailSent && !cred.user.emailVerified) {
     try {
-      await sendEmailVerification(cred.user);
+      await sendVerify(cred.user);
       emailSent = true;
     } catch (e: any) {
       console.warn("[register] sendEmailVerification failed:", e?.code, e?.message);
@@ -200,6 +202,41 @@ export const registerUser = async (params: {
   }
 
   return { user, emailSent, note };
+};
+
+// Where the verification link should land the user: back in our own app. If
+// this domain isn't in Firebase's Authorized domains, sendVerify() below falls
+// back to Firebase's default hosted handler automatically.
+function verifyActionSettings() {
+  if (typeof window === "undefined") return undefined;
+  return { url: `${window.location.origin}/`, handleCodeInApp: true } as const;
+}
+
+async function sendVerify(user: FirebaseUser): Promise<void> {
+  try {
+    await sendEmailVerification(user, verifyActionSettings());
+  } catch (e: any) {
+    if (
+      e?.code === "auth/unauthorized-continue-uri" ||
+      e?.code === "auth/invalid-continue-uri" ||
+      e?.code === "auth/missing-continue-uri"
+    ) {
+      // Domain not authorized in Firebase — use the default hosted handler.
+      await sendEmailVerification(user);
+    } else {
+      throw e;
+    }
+  }
+}
+
+// Completes an email-verification action link (mode=verifyEmail&oobCode=...).
+export const applyEmailActionCode = async (
+  oobCode: string,
+): Promise<{ email: string | null }> => {
+  const info = await checkActionCode(auth, oobCode); // throws if invalid/expired
+  await applyActionCode(auth, oobCode);
+  if (auth.currentUser) await auth.currentUser.reload().catch(() => {});
+  return { email: info.data?.email ?? null };
 };
 
 // Whether the currently signed-in email/password user still needs to verify.
@@ -216,7 +253,7 @@ export const getEmailVerificationStatus = (): {
 // Sends Firebase's verification email to the signed-in user.
 export const sendVerificationToCurrentUser = async (): Promise<void> => {
   if (!auth.currentUser) throw new Error("You need to be signed in.");
-  await sendEmailVerification(auth.currentUser);
+  await sendVerify(auth.currentUser);
 };
 
 // Asks the backend to re-send the email verification link for a signed-out
