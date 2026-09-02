@@ -18,9 +18,10 @@ import {
   Building2,
   GraduationCap,
   CalendarDays,
+  User as UserIcon,
 } from "lucide-react";
 import { registerUser } from "../../services/authService";
-import { SCHOOLS, DEFAULT_SCHOOL } from "../../types";
+import { SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
 
@@ -158,6 +159,8 @@ const BrandPanel: React.FC = () => (
 );
 
 const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -179,6 +182,10 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     e.preventDefault();
     setError(null);
 
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Please enter your first and last name.");
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError("Please enter a valid email address so we can send your confirmation link.");
       return;
@@ -213,6 +220,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       const { emailSent } = await registerUser({
         email,
         password,
+        fullName: joinName(firstName, "", lastName),
         school,
         program: program.trim(),
         yearLevel,
@@ -330,6 +338,42 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                 {error}
               </div>
             )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="reg-first" className={labelClass}>
+                  First Name
+                </label>
+                <div className="relative">
+                  <UserIcon className={iconClass} />
+                  <input
+                    id="reg-first"
+                    type="text"
+                    required
+                    autoComplete="given-name"
+                    className={fieldClass("pl-10 pr-3")}
+                    placeholder="Juan"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="reg-last" className={labelClass}>
+                  Last Name
+                </label>
+                <input
+                  id="reg-last"
+                  type="text"
+                  required
+                  autoComplete="family-name"
+                  className={fieldClass("px-3")}
+                  placeholder="dela Cruz"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              </div>
+            </div>
 
             <div>
               <label htmlFor="reg-email" className={labelClass}>

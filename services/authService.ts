@@ -158,6 +158,7 @@ export const loginUser = async (
 export const registerUser = async (params: {
   email: string;
   password: string;
+  fullName?: string;
   school?: string;
   program?: string;
   yearLevel?: string;
@@ -168,6 +169,7 @@ export const registerUser = async (params: {
     body: JSON.stringify({
       email: params.email.trim().toLowerCase(),
       password: params.password,
+      fullName: params.fullName,
       school: params.school,
       program: params.program,
       yearLevel: params.yearLevel,

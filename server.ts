@@ -716,7 +716,7 @@ export async function createApp() {
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, school, program, yearLevel } = req.body ?? {};
+      const { email, password, fullName, school, program, yearLevel } = req.body ?? {};
       const normEmail = String(email ?? "").trim().toLowerCase();
       if (!isAllowedSignupEmail(normEmail)) {
         return res.status(400).json({ message: SIGNUP_DOMAIN_MESSAGE });
@@ -724,6 +724,7 @@ export async function createApp() {
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
       }
+      const n = typeof fullName === "string" ? fullName.trim().slice(0, 120) : null;
       const s = typeof school === "string" ? school.slice(0, 120) : null;
       const pr = typeof program === "string" ? program.slice(0, 80) : null;
       const y = typeof yearLevel === "string" ? yearLevel.slice(0, 40) : null;
@@ -742,7 +743,7 @@ export async function createApp() {
       }
 
       const token = encryptRegPassword(
-        JSON.stringify({ e: normEmail, p: password, s, pr, y, t: Date.now() }),
+        JSON.stringify({ e: normEmail, p: password, n, s, pr, y, t: Date.now() }),
       );
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
       const link = `${appUrl.replace(/\/$/, "")}/?signup=${encodeURIComponent(token)}`;
@@ -770,7 +771,7 @@ export async function createApp() {
       const token = String(req.body?.token ?? "");
       if (!token) return res.status(400).json({ message: "Missing confirmation token." });
 
-      let payload: { e: string; p: string; s?: string | null; pr?: string | null; y?: string | null; t: number };
+      let payload: { e: string; p: string; n?: string | null; s?: string | null; pr?: string | null; y?: string | null; t: number };
       try {
         payload = JSON.parse(decryptRegPassword(token));
       } catch {
@@ -793,7 +794,10 @@ export async function createApp() {
         return res.json({ message: "Your email is already verified. You can sign in.", already: true });
       }
 
-      const derivedName = normEmail.split("@")[0].replace(/[._-]+/g, " ").trim() || "Student";
+      const derivedName =
+        (payload.n && payload.n.trim()) ||
+        normEmail.split("@")[0].replace(/[._-]+/g, " ").trim() ||
+        "Student";
 
       let uid: string;
       if (existingFb) {
