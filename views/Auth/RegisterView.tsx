@@ -3,7 +3,6 @@ import {
   UserPlus,
   Mail,
   Lock,
-  User as UserIcon,
   ChevronLeft,
   Eye,
   EyeOff,
@@ -16,10 +15,8 @@ import {
   UploadCloud,
   MessagesSquare,
   Award,
-  Building2,
 } from "lucide-react";
 import { registerUser } from "../../services/authService";
-import { SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 
 interface Props {
   onGoToLogin: () => void;
@@ -155,12 +152,9 @@ const BrandPanel: React.FC = () => (
 );
 
 const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [school, setSchool] = useState(DEFAULT_SCHOOL);
   const [agree, setAgree] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -168,7 +162,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [emailSent, setEmailSent] = useState(true);
-  const [emailNote, setEmailNote] = useState<string | null>(null);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
 
   const strength = passwordStrength(password);
@@ -177,16 +170,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
     e.preventDefault();
     setError(null);
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setError("Please enter your first and last name.");
-      return;
-    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError("Please enter a valid email address so we can send your verification link.");
-      return;
-    }
-    if (!school) {
-      setError("Please select your school.");
+      setError("Please enter a valid email address so we can send your confirmation link.");
       return;
     }
     if (password.length < 6) {
@@ -204,14 +189,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
 
     setLoading(true);
     try {
-      const { emailSent, note } = await registerUser({
-        email,
-        password,
-        fullName: joinName(firstName, "", lastName),
-        school,
-      });
+      const { emailSent } = await registerUser({ email, password });
       setEmailSent(emailSent);
-      setEmailNote(note ?? null);
       setSubmitted(true);
     } catch (err: any) {
       console.error("Registration error:", err);
@@ -240,19 +219,17 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
               <Mail className="w-7 h-7 text-[#5b6ef5]" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">
-              Verify your email to continue
+              Check your email
             </h2>
             <p className="text-sm text-slate-400 leading-relaxed mb-3 max-w-sm">
-              Your account for{" "}
-              <span className="font-semibold text-white">{email.trim()}</span> was
-              created. Open the verification link we emailed you, then sign in.
+              We sent a confirmation link to{" "}
+              <span className="font-semibold text-white">{email.trim()}</span>.
+              Open it to finish creating your account, then sign in.
             </p>
             <p className="text-xs text-slate-500 leading-relaxed mb-8 max-w-sm">
-              {emailNote
-                ? emailNote
-                : emailSent
-                  ? "Check your inbox — and your spam / promotions folder. The link confirms your email so you can sign in."
-                  : "A verification link couldn't be sent automatically. On the sign-in screen, enter your email and password and use “Resend verification email”."}
+              {emailSent
+                ? "Check your inbox — and your spam / promotions folder. Your account isn't created until you click the link."
+                : "The confirmation email couldn't be sent. Go back and try registering again in a moment."}
             </p>
             <button
               type="button"
@@ -326,63 +303,6 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                 {error}
               </div>
             )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="reg-first" className={labelClass}>
-                  First Name
-                </label>
-                <div className="relative">
-                  <UserIcon className={iconClass} />
-                  <input
-                    id="reg-first"
-                    type="text"
-                    required
-                    autoComplete="given-name"
-                    className={fieldClass("pl-10 pr-3")}
-                    placeholder="Juan"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div>
-                <label htmlFor="reg-last" className={labelClass}>
-                  Last Name
-                </label>
-                <input
-                  id="reg-last"
-                  type="text"
-                  required
-                  autoComplete="family-name"
-                  className={fieldClass("px-3")}
-                  placeholder="dela Cruz"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="reg-school" className={labelClass}>
-                School
-              </label>
-              <div className="relative">
-                <Building2 className={iconClass} />
-                <select
-                  id="reg-school"
-                  className={fieldClass("pl-10 pr-4")}
-                  value={school}
-                  onChange={(e) => setSchool(e.target.value)}
-                >
-                  {SCHOOLS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
             <div>
               <label htmlFor="reg-email" className={labelClass}>

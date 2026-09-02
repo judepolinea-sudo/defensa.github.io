@@ -18,8 +18,56 @@ import {
   getSessionToken,
   checkGoogleRedirectResult,
   applyEmailActionCode,
+  confirmSignup,
 } from "./services/authService";
 import { startPresence, stopPresence } from "./services/presenceService";
+
+// Handles the ?signup=<token> confirmation link — creates the account now.
+const ConfirmSignupView: React.FC<{ token: string; onDone: () => void }> = ({
+  token,
+  onDone,
+}) => {
+  const [state, setState] = useState<"working" | "ok" | "error">("working");
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    confirmSignup(token)
+      .then((r) => { setMsg(r.message); setState("ok"); })
+      .catch((e) => { setMsg(e?.message || "This link is invalid or has expired."); setState("error"); });
+  }, [token]);
+
+  return (
+    <div className="flex items-center justify-center min-h-screen p-4 bg-slate-50">
+      <div className="w-full max-w-md bg-white rounded-3xl p-10 shadow-xl text-center">
+        {state === "working" && (
+          <>
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-800">Creating your account…</h2>
+          </>
+        )}
+        {state !== "working" && (
+          <>
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl ${state === "ok" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}>
+              {state === "ok" ? "✓" : "!"}
+            </div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">
+              {state === "ok" ? "Email verified" : "Link problem"}
+            </h2>
+            <p className="text-slate-500 mb-8">{msg}</p>
+            <button
+              type="button"
+              onClick={onDone}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors"
+            >
+              Go to Sign In
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // Handles the ?mode=verifyEmail&oobCode=... link Firebase puts in the
 // verification email, landing the user in a branded Defensa page.
@@ -135,6 +183,11 @@ const App: React.FC = () => {
     if (typeof window === "undefined") return null;
     const p = new URLSearchParams(window.location.search);
     return p.get("mode") === "verifyEmail" ? p.get("oobCode") : null;
+  });
+  // Our own ?signup=<token> confirmation link.
+  const [signupToken, setSignupToken] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("signup");
   });
 
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.LOADING);
@@ -312,6 +365,21 @@ const App: React.FC = () => {
       console.error("Logout failed:", error);
     }
   };
+
+  if (signupToken) {
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
+        <ConfirmSignupView
+          token={signupToken}
+          onDone={() => {
+            window.history.replaceState(null, "", window.location.pathname);
+            setSignupToken(null);
+            setCurrentView(ViewState.LOGIN);
+          }}
+        />
+      </div>
+    );
+  }
 
   if (emailActionCode) {
     return (

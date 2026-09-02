@@ -704,131 +704,137 @@ export async function createApp() {
   });
 
   // ===============================================================
-  // PUBLIC SELF-REGISTRATION
-  // Unauthenticated. Self-service — no admin approval.
-  //
-  // Creates the Firebase Auth user (unverified) AND the Supabase `users` row
-  // (role STUDENT, status APPROVED) so the account is visible to the admin and
-  // its data is in Supabase. Sign-in is still blocked until the email is
-  // verified (REQUIRE_EMAIL_VERIFICATION); the admin can also verify manually.
+  // PUBLIC SELF-REGISTRATION  (email + password only)
+  // Unauthenticated. NOTHING is created in Firebase or Supabase here — the
+  // email + password are sealed into an encrypted, expiring token that is
+  // emailed as a link. The account is only created when that link is opened
+  // (POST /api/auth/confirm-signup). An unconfirmed sign-up leaves no record
+  // anywhere.
   // ===============================================================
+
+  const SIGNUP_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, fullName, program, yearLevel, school } = req.body;
-      if (!email || !password || !fullName) {
-        return res.status(400).json({
-          message: "Missing required fields: email, password, fullName",
-        });
-      }
-      const normEmail = String(email).trim().toLowerCase();
+      const { email, password } = req.body ?? {};
+      const normEmail = String(email ?? "").trim().toLowerCase();
       if (!isAllowedSignupEmail(normEmail)) {
         return res.status(400).json({ message: SIGNUP_DOMAIN_MESSAGE });
       }
       if (typeof password !== "string" || password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters." });
       }
-      if (typeof fullName !== "string" || !fullName.trim() || fullName.trim().length > 120) {
-        return res.status(400).json({ message: "Please provide your full name." });
-      }
 
-      // Existing verified member?
+      // Already a real account?
       const { data: existingUser } = await supabase
         .from("users").select("id").eq("email", normEmail).maybeSingle();
       if (existingUser) {
         return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       }
-
-      // A Firebase user may already exist from an earlier, unverified sign-up.
-      let existingRecord: admin.auth.UserRecord | null = null;
       try {
-        existingRecord = await auth.getUserByEmail(normEmail);
+        await auth.getUserByEmail(normEmail);
+        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
       } catch (e: any) {
         if (e.code !== "auth/user-not-found") throw e;
       }
-      if (existingRecord?.emailVerified) {
-        return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
-      }
 
-      let uid: string;
-      if (existingRecord) {
-        // Re-registration before verifying — refresh the password.
-        uid = existingRecord.uid;
-        await auth.updateUser(uid, { password, displayName: fullName.trim() });
-      } else {
-        try {
-          const userRecord = await auth.createUser({
-            email: normEmail,
-            password,
-            displayName: fullName.trim(),
-            emailVerified: false,
-          });
-          uid = userRecord.uid;
-        } catch (createErr: any) {
-          if (createErr.code === "auth/email-already-exists") {
-            return res.status(409).json({ message: "An account with this email already exists. Try signing in." });
-          }
-          throw createErr;
-        }
-      }
+      const token = encryptRegPassword(
+        JSON.stringify({ e: normEmail, p: password, t: Date.now() }),
+      );
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const link = `${appUrl.replace(/\/$/, "")}/?signup=${encodeURIComponent(token)}`;
 
-      // Write the Supabase row now (idempotent-ish — skip if it somehow exists).
-      const { data: alreadyRow } = await supabase
-        .from("users").select("id").eq("firebase_uid", uid).maybeSingle();
-      if (!alreadyRow) {
-        const { error: insErr } = await supabase.from("users").insert(
-          profileToRow({
-            firebaseUid: uid,
-            email: normEmail,
-            fullName: fullName.trim(),
-            role: "STUDENT",
-            program: program || null,
-            yearLevel: yearLevel || null,
-            school: school || null,
-            isDeleted: false,
-            status: "APPROVED",
-            createdBy: "SELF_SIGNUP",
-          }),
-        );
-        if (insErr) {
-          if (!existingRecord) await auth.deleteUser(uid).catch(() => {});
-          console.error("[register] Supabase insert failed:", insErr);
-          const missing = /Could not find the .* column|does not exist/i.test(insErr.message || "");
-          return res.status(500).json({
-            message: missing
-              ? "Sign-up isn't fully set up yet. Ask the administrator to run the pending database migration."
-              : "Could not create your account. Please try again.",
-          });
-        }
-      }
+      const emailSent = await sendVerificationEmail({ to: normEmail, link });
 
-      await logAudit(uid, "SELF_SIGNUP", "users", uid, { email: normEmail });
-
-      // Send the branded verification email ourselves (needs SMTP). If SMTP
-      // isn't configured, the client falls back to Firebase's own (plain)
-      // verification email via sendEmailVerification.
-      let emailSent = false;
-      try {
-        // No actionCodeSettings — the link uses Firebase's default handler,
-        // which needs no extra authorized-domain setup.
-        const link = await auth.generateEmailVerificationLink(normEmail);
-        emailSent = await sendVerificationEmail({
-          to: normEmail,
-          fullName: fullName.trim(),
-          link,
-        });
-      } catch (e: any) {
-        console.warn("[register] verification email failed:", e?.message ?? e);
-      }
+      await logAudit(null, "SELF_SIGNUP_REQUESTED", "auth", normEmail, { email: normEmail, emailSent });
 
       res.status(201).json({
-        message: "Account created. Check your email for the verification link, then sign in.",
+        message: emailSent
+          ? "Check your email for a link to finish creating your account."
+          : "We couldn't send the confirmation email. Please try again in a moment.",
         emailSent,
         emailConfigured: isEmailConfigured(),
       });
     } catch (error: any) {
       console.error("Register error:", error);
       res.status(500).json({ message: error.message || "Registration failed. Please try again." });
+    }
+  });
+
+  // Opens the emailed link → NOW create the Firebase user + Supabase row.
+  app.post("/api/auth/confirm-signup", async (req, res) => {
+    try {
+      const token = String(req.body?.token ?? "");
+      if (!token) return res.status(400).json({ message: "Missing confirmation token." });
+
+      let payload: { e: string; p: string; t: number };
+      try {
+        payload = JSON.parse(decryptRegPassword(token));
+      } catch {
+        return res.status(400).json({ message: "This confirmation link is invalid." });
+      }
+      const normEmail = String(payload.e ?? "").trim().toLowerCase();
+      if (!normEmail || !payload.p) {
+        return res.status(400).json({ message: "This confirmation link is invalid." });
+      }
+      if (Date.now() - Number(payload.t || 0) > SIGNUP_TOKEN_TTL_MS) {
+        return res.status(400).json({ message: "This confirmation link has expired. Please sign up again." });
+      }
+
+      // Already confirmed? (double-click / re-open) — treat as success.
+      const { data: existingUser } = await supabase
+        .from("users").select("id").eq("email", normEmail).maybeSingle();
+      let existingFb: admin.auth.UserRecord | null = null;
+      try { existingFb = await auth.getUserByEmail(normEmail); } catch { /* not found */ }
+      if (existingUser && existingFb) {
+        return res.json({ message: "Your email is already verified. You can sign in.", already: true });
+      }
+
+      const derivedName = normEmail.split("@")[0].replace(/[._-]+/g, " ").trim() || "Student";
+
+      let uid: string;
+      if (existingFb) {
+        uid = existingFb.uid;
+        await auth.updateUser(uid, { emailVerified: true }).catch(() => {});
+      } else {
+        const rec = await auth.createUser({
+          email: normEmail,
+          password: payload.p,
+          displayName: derivedName,
+          emailVerified: true,
+        });
+        uid = rec.uid;
+      }
+
+      if (!existingUser) {
+        const { error: insErr } = await supabase.from("users").insert(
+          profileToRow({
+            firebaseUid: uid,
+            email: normEmail,
+            fullName: derivedName,
+            role: "STUDENT",
+            isDeleted: false,
+            status: "APPROVED",
+            createdBy: "SELF_SIGNUP",
+          }),
+        );
+        if (insErr) {
+          if (!existingFb) await auth.deleteUser(uid).catch(() => {});
+          console.error("[confirm-signup] Supabase insert failed:", insErr);
+          const missing = /Could not find the .* column|does not exist/i.test(insErr.message || "");
+          return res.status(500).json({
+            message: missing
+              ? "Sign-up isn't fully set up yet. Ask the administrator to run the pending database migration."
+              : "Could not finish creating your account. Please try again.",
+          });
+        }
+      }
+
+      await logAudit(uid, "SELF_SIGNUP", "users", uid, { email: normEmail });
+      res.json({ message: "Email verified — your account is ready. You can sign in now." });
+    } catch (error: any) {
+      console.error("Confirm-signup error:", error);
+      res.status(500).json({ message: error.message || "Could not confirm your account." });
     }
   });
 

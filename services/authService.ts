@@ -152,52 +152,41 @@ export const loginUser = async (
   }
 };
 
+// Sign-up = email + password only. Nothing is created yet — the backend
+// emails a confirmation link; the account exists only after confirmSignup().
 export const registerUser = async (params: {
   email: string;
   password: string;
-  fullName: string;
-  program?: string;
-  yearLevel?: string;
-  school?: string;
-}): Promise<{ emailSent: boolean; note?: string }> => {
-  const email = params.email.trim().toLowerCase();
-
+}): Promise<{ emailSent: boolean }> => {
   const res = await fetch("/api/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify({
+      email: params.email.trim().toLowerCase(),
+      password: params.password,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(data.message || "Registration failed. Please try again.");
   }
+  return { emailSent: data.emailSent === true };
+};
 
-  // The account is created but NOT verified — the user must confirm their
-  // email before they can sign in. Sign in just long enough to fire the
-  // verification email, then sign back out.
-  let emailSent = data.emailSent === true;
-  let note: string | undefined;
-  try {
-    await applyAuthPersistence(false);
-    const cred = await signInWithEmailAndPassword(auth, email, params.password);
-    if (!cred.user.emailVerified && !emailSent) {
-      await sendVerify(cred.user);
-      emailSent = true;
-    }
-  } catch (e: any) {
-    const code = e?.code || "unknown";
-    console.warn("[register] verification email failed:", code, e?.message);
-    if (code === "auth/too-many-requests") {
-      note =
-        "Your account was created, but too many verification emails have been requested recently — Firebase is blocking sends for about an hour. Try again later, or ask the admin to verify you.";
-    } else {
-      note = `Your account was created, but the verification email could not be sent (${code}). Use “Resend verification email” on the sign-in screen, or ask the admin to verify you.`;
-    }
-  } finally {
-    await signOut(auth).catch(() => {});
+// Completes the emailed confirmation link (?signup=<token>).
+export const confirmSignup = async (
+  token: string,
+): Promise<{ message: string }> => {
+  const res = await fetch("/api/auth/confirm-signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.message || "Could not confirm your account.");
   }
-
-  return { emailSent, note };
+  return { message: data.message || "Your account is ready. You can sign in now." };
 };
 
 // Where the verification link should land the user: back in our own app. If
