@@ -16,37 +16,6 @@ const TUTORIAL_VIDEO_URL = '/tutorial.mp4';
 import { ProjectProfile, SessionResult } from '../../types';
 import DefenseGuideModal from '../components/DefenseGuideModal';
 import ReadinessDashboardView from './ReadinessDashboardView';
-import { getEmailVerificationStatus, sendVerificationToCurrentUser } from '../../services/authService';
-
-const EmailVerifyBanner: React.FC = () => {
-  const { needsVerification, email } = getEmailVerificationStatus();
-  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  if (!needsVerification) return null;
-  return (
-    <div className="mx-4 md:mx-6 mt-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-      <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-      <span className="text-amber-800 dark:text-amber-200 font-semibold">
-        Your email {email ? <span className="font-bold">{email}</span> : ''} isn&apos;t verified yet.
-      </span>
-      {state === 'sent' ? (
-        <span className="text-amber-700 dark:text-amber-300">Sent — check your inbox and spam.</span>
-      ) : (
-        <button
-          type="button"
-          disabled={state === 'sending'}
-          onClick={async () => {
-            setState('sending');
-            try { await sendVerificationToCurrentUser(); setState('sent'); }
-            catch { setState('error'); }
-          }}
-          className="font-bold text-amber-700 dark:text-amber-300 underline disabled:opacity-60"
-        >
-          {state === 'sending' ? 'Sending…' : state === 'error' ? 'Try again' : 'Send verification link'}
-        </button>
-      )}
-    </div>
-  );
-};
 
 interface Props {
   user: any;
@@ -391,8 +360,6 @@ const DashboardView: React.FC<Props> = ({
           <LogOut className="w-5 h-5" /> Logout
         </motion.button>
       </header>
-
-      <EmailVerifyBanner />
 
       <main className="flex-grow p-4 md:p-10 max-w-7xl mx-auto w-full">
         <AnimatePresence mode="wait">

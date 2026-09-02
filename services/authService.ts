@@ -159,7 +159,7 @@ export const registerUser = async (params: {
   program?: string;
   yearLevel?: string;
   school?: string;
-}): Promise<{ user: User; emailSent: boolean; note?: string }> => {
+}): Promise<{ emailSent: boolean; note?: string }> => {
   const email = params.email.trim().toLowerCase();
 
   const res = await fetch("/api/auth/register", {
@@ -172,36 +172,29 @@ export const registerUser = async (params: {
     throw new Error(data.message || "Registration failed. Please try again.");
   }
 
-  // Sign the new user in for real — the account is usable immediately.
-  await applyAuthPersistence(true);
-  const cred = await signInWithEmailAndPassword(auth, email, params.password);
-  const token = await getIdToken(cred.user);
-
-  let user: User;
-  try {
-    user = await fetchProfileOrThrow(token);
-  } catch (err) {
-    await signOut(auth);
-    throw err;
-  }
-
-  // Fire the verification email (best effort — a nudge, not a gate).
+  // The account is created but NOT verified — the user must confirm their
+  // email before they can sign in. Sign in just long enough to fire the
+  // verification email, then sign back out.
   let emailSent = data.emailSent === true;
   let note: string | undefined;
-  if (!emailSent && !cred.user.emailVerified) {
-    try {
+  try {
+    await applyAuthPersistence(false);
+    const cred = await signInWithEmailAndPassword(auth, email, params.password);
+    if (!cred.user.emailVerified && !emailSent) {
       await sendVerify(cred.user);
       emailSent = true;
-    } catch (e: any) {
-      console.warn("[register] sendEmailVerification failed:", e?.code, e?.message);
-      if (e?.code === "auth/too-many-requests") {
-        note =
-          "We couldn't send another verification email just yet (too many recent requests). Use the button on your dashboard in a little while.";
-      }
     }
+  } catch (e: any) {
+    console.warn("[register] verification email failed:", e?.code, e?.message);
+    if (e?.code === "auth/too-many-requests") {
+      note =
+        "Your account was created, but we couldn't send another verification email right now (too many recent requests). Wait about an hour, then use “Resend verification email” on the sign-in screen.";
+    }
+  } finally {
+    await signOut(auth).catch(() => {});
   }
 
-  return { user, emailSent, note };
+  return { emailSent, note };
 };
 
 // Where the verification link should land the user: back in our own app. If

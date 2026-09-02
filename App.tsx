@@ -350,7 +350,6 @@ const App: React.FC = () => {
 
       {currentView === ViewState.REGISTER && (
         <RegisterView
-          onLogin={handleLogin}
           onGoToLogin={() => setCurrentView(ViewState.LOGIN)}
           onBack={() => setCurrentView(ViewState.LOGIN)}
         />

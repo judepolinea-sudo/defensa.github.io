@@ -24,7 +24,6 @@ import { SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 interface Props {
   onGoToLogin: () => void;
   onBack: () => void;
-  onLogin: (userData: any) => void;
 }
 
 // Rough password-strength score (0-4) + label, for the meter on the form.
@@ -155,7 +154,7 @@ const BrandPanel: React.FC = () => (
   </div>
 );
 
-const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack, onLogin }) => {
+const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -167,6 +166,9 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack, onLogin }) => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [emailSent, setEmailSent] = useState(true);
+  const [emailNote, setEmailNote] = useState<string | null>(null);
   const [isDarkPanel, setIsDarkPanel] = useState(true);
 
   const strength = passwordStrength(password);
@@ -202,13 +204,15 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack, onLogin }) => {
 
     setLoading(true);
     try {
-      const { user } = await registerUser({
+      const { emailSent, note } = await registerUser({
         email,
         password,
         fullName: joinName(firstName, "", lastName),
         school,
       });
-      onLogin(user);
+      setEmailSent(emailSent);
+      setEmailNote(note ?? null);
+      setSubmitted(true);
     } catch (err: any) {
       console.error("Registration error:", err);
       setError(err.message || "Registration failed. Please try again.");
@@ -225,6 +229,43 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack, onLogin }) => {
     }`;
   const labelClass = `block text-xs font-semibold mb-1.5 ${isDarkPanel ? "text-slate-300" : "text-slate-600"}`;
   const iconClass = `absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 ${isDarkPanel ? "text-slate-500" : "text-slate-400"}`;
+
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4 py-10 sm:py-16">
+        <div className="w-full max-w-5xl mx-auto rounded-[2rem] overflow-hidden shadow-[0_30px_70px_-20px_rgba(15,23,42,0.35)] grid grid-cols-1 md:grid-cols-2">
+          <BrandPanel />
+          <div className="relative p-8 sm:p-10 flex flex-col items-center justify-center text-center bg-[#141824]">
+            <div className="w-14 h-14 rounded-2xl bg-[#5b6ef5]/15 flex items-center justify-center mb-6">
+              <Mail className="w-7 h-7 text-[#5b6ef5]" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Verify your email to continue
+            </h2>
+            <p className="text-sm text-slate-400 leading-relaxed mb-3 max-w-sm">
+              Your account for{" "}
+              <span className="font-semibold text-white">{email.trim()}</span> was
+              created. Open the verification link we emailed you, then sign in.
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed mb-8 max-w-sm">
+              {emailNote
+                ? emailNote
+                : emailSent
+                  ? "Check your inbox — and your spam / promotions folder. The link confirms your email so you can sign in."
+                  : "A verification link couldn't be sent automatically. On the sign-in screen, enter your email and password and use “Resend verification email”."}
+            </p>
+            <button
+              type="button"
+              onClick={onGoToLogin}
+              className="w-full py-3.5 bg-[#5b6ef5] hover:bg-[#4c5eea] text-white font-bold rounded-xl shadow-lg shadow-[#5b6ef5]/25 transition-colors"
+            >
+              Go to Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center px-4 py-10 sm:py-16">

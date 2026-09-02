@@ -132,12 +132,11 @@ function isValidRole(role: string): role is AppRole {
 // here, e.g. ["nu-clark.edu.ph"].
 const ALLOWED_SIGNUP_DOMAINS: string[] = [];
 
-// Hard email-verification gate. OFF by default so sign-up works end to end
-// without any SMTP setup — the verification email is still sent best-effort
-// and the dashboard nudges unverified users. Set REQUIRE_EMAIL_VERIFICATION
-// = "true" (once SMTP is configured) to block sign-in until verified.
+// Hard email-verification gate. ON by default: a self-signed-up account
+// cannot sign in until its email is verified. Set REQUIRE_EMAIL_VERIFICATION
+// = "false" to disable (e.g. while email delivery is being sorted out).
 const REQUIRE_EMAIL_VERIFICATION =
-  String(process.env.REQUIRE_EMAIL_VERIFICATION ?? "").toLowerCase() === "true";
+  String(process.env.REQUIRE_EMAIL_VERIFICATION ?? "true").toLowerCase() !== "false";
 
 function isValidEmailFormat(email: string | undefined | null): boolean {
   return !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
