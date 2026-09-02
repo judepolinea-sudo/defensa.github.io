@@ -206,20 +206,16 @@ function verifyActionSettings() {
 }
 
 async function sendVerify(user: FirebaseUser): Promise<void> {
+  // Try to make the link come back to our app; on ANY failure (e.g. the
+  // domain isn't in Firebase's Authorized domains) fall back to Firebase's
+  // default hosted handler, which always works.
   try {
     await sendEmailVerification(user, verifyActionSettings());
+    return;
   } catch (e: any) {
-    if (
-      e?.code === "auth/unauthorized-continue-uri" ||
-      e?.code === "auth/invalid-continue-uri" ||
-      e?.code === "auth/missing-continue-uri"
-    ) {
-      // Domain not authorized in Firebase — use the default hosted handler.
-      await sendEmailVerification(user);
-    } else {
-      throw e;
-    }
+    console.warn("[verify] custom action URL failed, using default:", e?.code, e?.message);
   }
+  await sendEmailVerification(user);
 }
 
 // Completes an email-verification action link (mode=verifyEmail&oobCode=...).
