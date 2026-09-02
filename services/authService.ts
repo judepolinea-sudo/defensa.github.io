@@ -6,6 +6,7 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  sendEmailVerification,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -135,7 +136,13 @@ export const loginUser = async (
   const token = await getIdToken(userCredential.user);
   try {
     return await fetchProfileOrThrow(token);
-  } catch (err) {
+  } catch (err: any) {
+    // If the backend rejected sign-in because the email isn't verified,
+    // (re)send the verification email via Firebase's own delivery — this
+    // works even when the server has no SMTP configured.
+    if (err?.code === "EMAIL_NOT_VERIFIED" && !userCredential.user.emailVerified) {
+      await sendEmailVerification(userCredential.user).catch(() => {});
+    }
     await signOut(auth);
     throw err;
   }

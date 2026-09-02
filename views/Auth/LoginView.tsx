@@ -138,7 +138,7 @@ const LoginView: React.FC<Props> = ({ onLogin, onGoToRegister, onBack }) => {
       if (err.code === "EMAIL_NOT_VERIFIED") {
         setNeedsVerification(true);
         setError(
-          "Please verify your email first. Open the verification link we sent to your inbox, then sign in again.",
+          `We just sent a verification link to ${trimmedEmail}. Open it (check spam too), then sign in again.`,
         );
       } else if (
         err.code === "auth/invalid-email" ||
