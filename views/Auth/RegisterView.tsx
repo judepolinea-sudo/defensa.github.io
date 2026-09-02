@@ -236,30 +236,23 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
         <div className="w-full max-w-5xl mx-auto rounded-[2rem] overflow-hidden shadow-[0_30px_70px_-20px_rgba(15,23,42,0.35)] grid grid-cols-1 md:grid-cols-2">
           <BrandPanel />
           <div className="relative p-8 sm:p-10 flex flex-col items-center justify-center text-center bg-[#141824]">
-            <div className="w-14 h-14 rounded-2xl bg-[#5b6ef5]/15 flex items-center justify-center mb-6">
-              <Mail className="w-7 h-7 text-[#5b6ef5]" />
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center mb-6">
+              <ShieldCheck className="w-7 h-7 text-emerald-400" />
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">
-              Verify your email
+              Account created
             </h2>
-            {emailNote ? (
-              <p className="text-sm text-amber-300/90 leading-relaxed mb-8 max-w-sm">
-                {emailNote}
-              </p>
-            ) : emailSent ? (
-              <p className="text-sm text-slate-400 leading-relaxed mb-8 max-w-sm">
-                We sent a verification link to{" "}
-                <span className="font-semibold text-white">{email.trim()}</span>.
-                Open it (check your spam / promotions folder too), then sign in.
-              </p>
-            ) : (
-              <p className="text-sm text-amber-300/90 leading-relaxed mb-8 max-w-sm">
-                Your account was created, but the verification email couldn&apos;t
-                be sent automatically. On the sign-in screen, enter your email and
-                password and use{" "}
-                <span className="font-semibold">Resend verification email</span>.
-              </p>
-            )}
+            <p className="text-sm text-slate-400 leading-relaxed mb-3 max-w-sm">
+              You can sign in now with{" "}
+              <span className="font-semibold text-white">{email.trim()}</span>.
+            </p>
+            <p className="text-xs text-slate-500 leading-relaxed mb-8 max-w-sm">
+              {emailNote
+                ? emailNote
+                : emailSent
+                  ? "We also sent a verification link to that inbox (check spam) — confirming it removes the reminder banner later."
+                  : "A verification link couldn't be sent automatically; you can resend it later from your dashboard."}
+            </p>
             <button
               type="button"
               onClick={onGoToLogin}

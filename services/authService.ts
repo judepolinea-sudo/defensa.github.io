@@ -204,6 +204,23 @@ export const registerUser = async (params: {
   return { emailSent, note };
 };
 
+// Whether the currently signed-in email/password user still needs to verify.
+export const getEmailVerificationStatus = (): {
+  needsVerification: boolean;
+  email: string | null;
+} => {
+  const u = auth.currentUser;
+  if (!u) return { needsVerification: false, email: null };
+  const isPassword = u.providerData.some((p) => p.providerId === "password");
+  return { needsVerification: isPassword && !u.emailVerified, email: u.email };
+};
+
+// Sends Firebase's verification email to the signed-in user.
+export const sendVerificationToCurrentUser = async (): Promise<void> => {
+  if (!auth.currentUser) throw new Error("You need to be signed in.");
+  await sendEmailVerification(auth.currentUser);
+};
+
 // Asks the backend to re-send the email verification link for a signed-out
 // user. The response is deliberately generic.
 export const resendVerification = async (email: string): Promise<string> => {

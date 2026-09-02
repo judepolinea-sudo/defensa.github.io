@@ -128,9 +128,16 @@ function isValidRole(role: string): role is AppRole {
 // ===============================================================
 
 // Optional allow-list of sign-up email domains. Empty = any real email is
-// accepted (email verification proves the address is real). To lock sign-up
-// back down to one institution, put its domain here, e.g. ["nu-clark.edu.ph"].
+// accepted. To lock sign-up back down to one institution, put its domain
+// here, e.g. ["nu-clark.edu.ph"].
 const ALLOWED_SIGNUP_DOMAINS: string[] = [];
+
+// Hard email-verification gate. OFF by default so sign-up works end to end
+// without any SMTP setup — the verification email is still sent best-effort
+// and the dashboard nudges unverified users. Set REQUIRE_EMAIL_VERIFICATION
+// = "true" (once SMTP is configured) to block sign-in until verified.
+const REQUIRE_EMAIL_VERIFICATION =
+  String(process.env.REQUIRE_EMAIL_VERIFICATION ?? "").toLowerCase() === "true";
 
 function isValidEmailFormat(email: string | undefined | null): boolean {
   return !!email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
@@ -205,27 +212,23 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
   if (!error && row) {
     if (row.is_deleted === true) return null;
     if (row.status === "PENDING" || row.status === "REJECTED") return null;
-    // Email verification is mandatory for email/password accounts (admins are
-    // exempt — they are provisioned deliberately). Google identities are
-    // verified by Google.
-    const provider = decoded.firebase?.sign_in_provider;
-    if (row.role !== "ADMIN" && provider === "password" && decoded.email_verified === false) {
+    // Email-verification gate — only enforced when REQUIRE_EMAIL_VERIFICATION
+    // is on. Admins are always exempt.
+    if (REQUIRE_EMAIL_VERIFICATION && row.role !== "ADMIN" && decoded.email_verified === false) {
       return null;
     }
-    if (provider === "google.com" && decoded.email_verified === false) return null;
     return { decoded, profile: rowToProfile(row) };
   }
 
   // No Supabase profile yet. Two self-service paths auto-provision a STUDENT
-  // row here, and BOTH require a verified email:
-  //   • Google sign-in — any Google account, first login.
-  //   • Email/password self sign-up — the row is created only now, on the
-  //     first VERIFIED sign-in, so an unverified sign-up leaves no record in
-  //     Supabase. The name/school/etc. entered at sign-up are carried on a
-  //     Firebase custom claim (`pendingProfile`) until this point.
+  // row here, on first sign-in:
+  //   • Google sign-in — any Google account.
+  //   • Email/password self sign-up — the name/school/etc. entered at sign-up
+  //     are carried on a Firebase custom claim (`pendingProfile`) until now.
+  // When REQUIRE_EMAIL_VERIFICATION is on, both require a verified email.
   const provider = decoded.firebase?.sign_in_provider;
   if (provider !== "google.com" && provider !== "password") return null;
-  if (decoded.email_verified === false) return null;
+  if (REQUIRE_EMAIL_VERIFICATION && decoded.email_verified === false) return null;
 
   const pending = (decoded as any).pendingProfile ?? {};
   const { data: created, error: createErr } = await supabase
@@ -551,22 +554,19 @@ export async function createApp() {
         .single();
 
       if (!row) {
-        // No Supabase profile yet.
-        //  • Google, or a self-signed-up email/password account whose email is
-        //    now verified → verifyAndGetCaller provisions the real STUDENT row.
-        //  • A self-signed-up account that hasn't verified yet → tell the login
-        //    screen so it can show the "verify your email" message + resend.
+        // No Supabase profile yet — verifyAndGetCaller provisions the real
+        // STUDENT row on first sign-in (Google, or email/password self-signup).
         const provider = decoded.firebase?.sign_in_provider;
-        if (provider === "google.com" || (provider === "password" && decoded.email_verified === true)) {
+        if (provider === "google.com" || provider === "password") {
+          if (REQUIRE_EMAIL_VERIFICATION && decoded.email_verified === false) {
+            return res.status(403).json({
+              message:
+                "Please verify your email address first. Open the verification link we sent to your inbox, then sign in again.",
+              code: "EMAIL_NOT_VERIFIED",
+            });
+          }
           const caller = await verifyAndGetCaller(authHeader);
           if (caller) return res.json({ user: caller.profile });
-        }
-        if (provider === "password" && decoded.email_verified === false) {
-          return res.status(403).json({
-            message:
-              "Please verify your email address first. We sent a verification link to your inbox — open it, then sign in again.",
-            code: "EMAIL_NOT_VERIFIED",
-          });
         }
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -590,15 +590,14 @@ export async function createApp() {
         });
       }
 
-      const provider = decoded.firebase?.sign_in_provider;
       if (
+        REQUIRE_EMAIL_VERIFICATION &&
         row.role !== "ADMIN" &&
-        ((provider === "password" && decoded.email_verified === false) ||
-          (provider === "google.com" && decoded.email_verified === false))
+        decoded.email_verified === false
       ) {
         return res.status(403).json({
           message:
-            "Please verify your email address first. We sent a verification link to your inbox — open it, then sign in again.",
+            "Please verify your email address first. Open the verification link we sent to your inbox, then sign in again.",
           code: "EMAIL_NOT_VERIFIED",
         });
       }
