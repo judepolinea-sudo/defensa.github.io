@@ -3281,14 +3281,14 @@ export async function createApp() {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
 
-    // Free-tier models, tried in order until one responds.
-    // (gpt-oss-20b:free returns empty content under response_format:json_object — kept last, after models that reliably return text)
-    const models = [
-      "nvidia/nemotron-3-super-120b-a12b:free",
-      "google/gemma-4-31b-it:free",
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "openai/gpt-oss-20b:free",
-    ];
+    // Free-tier models, tried in order until one responds. Override with the
+    // OPENROUTER_MODELS env var (comma-separated) when providers change.
+    const models = (process.env.OPENROUTER_MODELS?.trim()
+      ? process.env.OPENROUTER_MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+      : [
+          "nvidia/nemotron-3-super-120b-a12b:free",
+          "google/gemma-4-31b-it:free",
+        ]);
     const messages: { role: string; content: string }[] = [];
     if (system) messages.push({ role: "system", content: system });
     messages.push({ role: "user", content: prompt });
@@ -3338,12 +3338,14 @@ export async function createApp() {
     if (!apiKey) throw new Error("GEMINI_API_KEY not set in environment");
 
     const ai = new GoogleGenAI({ apiKey });
-    const models = [
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-lite",
-      "gemini-1.5-flash",
-      "gemini-2.5-flash-lite-preview-06-17",
-    ];
+    // Override with GEMINI_MODELS (comma-separated) when Google retires a model.
+    const models = (process.env.GEMINI_MODELS?.trim()
+      ? process.env.GEMINI_MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+      : [
+          "gemini-2.5-flash",
+          "gemini-flash-lite-latest",
+          "gemini-flash-latest",
+        ]);
 
     let authFailed = false;
     for (const model of models) {
@@ -3387,10 +3389,18 @@ export async function createApp() {
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
-    const models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama-3.1-8b-instant"];
+    // Override with GROQ_MODELS (comma-separated) when Groq rotates its catalog.
+    const models = (process.env.GROQ_MODELS?.trim()
+      ? process.env.GROQ_MODELS.split(",").map((s) => s.trim()).filter(Boolean)
+      : ["qwen/qwen3.8-27b", "openai/gpt-oss-120b"]);
     const messages: { role: string; content: string }[] = [];
     if (system) messages.push({ role: "system", content: system });
     messages.push({ role: "user", content: prompt });
+    // Groq rejects response_format:json_object unless the word "json" appears
+    // somewhere in the messages — guarantee it.
+    if (!messages.some((m) => /json/i.test(m.content))) {
+      messages[messages.length - 1].content += "\n\nRespond with valid JSON only.";
+    }
 
     for (const model of models) {
       const guard = abortAfter(timeoutMs);
@@ -3412,7 +3422,7 @@ export async function createApp() {
         });
 
         if (resp.status === 429) { console.warn(`[Groq] ${model} rate-limited`); continue; }
-        if (!resp.ok) { console.warn(`[Groq] ${model} HTTP ${resp.status}`); continue; }
+        if (!resp.ok) { console.warn(`[Groq] ${model} HTTP ${resp.status}: ${(await resp.text().catch(() => "")).slice(0, 160)}`); continue; }
 
         const data: any = await resp.json();
         const text = data?.choices?.[0]?.message?.content ?? "";

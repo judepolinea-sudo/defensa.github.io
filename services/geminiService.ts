@@ -1156,7 +1156,7 @@ Return ONLY this JSON:
 {"question":"...","source_section":"${targetSection}","source_excerpt":"exact phrase from the document, max 100 chars","difficulty":"${adaptiveDifficulty}","question_type":"Clarification|Methodology Defense|Design Justification|Literature Validation|Limitation Analysis|Assumption Challenge|Data Integrity|Security|Scalability|Future Improvements","reason":"1 sentence","panelist_name":"${panelist.name}","expectedKeywords":["6-8 terms taken from the document for ${targetSection}"]}`;
 
   try {
-    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 450, timeoutMs: 15_000 });
+    const raw = await callServerAI(prompt, SYSTEM_QUESTION, { fast: true, maxTokens: 450, timeoutMs: 28_000 });
     const parsed = parseAIJson(raw);
     if (!parsed.question) throw new Error("Missing question field");
     return {

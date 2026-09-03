@@ -621,7 +621,33 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     setIsThreadEvaluating(true);
     setPanelistRemark(null);
 
+    // If the student just resubmits an answer they already gave in this thread,
+    // there is nothing new to press on — close the thread instead of asking the
+    // same follow-up again.
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
+    const na = norm(capturedAnswer);
+    const repeated = activeThreadExchanges.some(e => {
+      const ne = norm(e.answer);
+      if (!ne || !na) return false;
+      if (ne === na) return true;
+      const shorter = ne.length < na.length ? ne : na;
+      const longer = ne.length < na.length ? na : ne;
+      return shorter.length > 25 && longer.includes(shorter);
+    });
+
     let satResult: SatisfactionResult;
+    if (repeated && activeThreadExchanges.length > 0) {
+      const prevScore = activeThreadExchanges[activeThreadExchanges.length - 1].satisfactionScore ?? 45;
+      satResult = {
+        satisfaction_score: prevScore,
+        verdict: prevScore >= SATISFACTION_THRESHOLD ? 'satisfied' : 'evasive',
+        gaps: ['You repeated an earlier answer without adding anything new.'],
+        followup_question: null,
+        panelist_remark:
+          "That's the same answer you already gave. I won't press further here — note this gap and strengthen it before your real defense.",
+      };
+      setIsThreadEvaluating(false);
+    } else {
     try {
       satResult = await evaluateSatisfaction(
         root.question,
@@ -641,6 +667,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
         followup_question: null,
         panelist_remark: "Let's move on.",
       };
+    }
     }
 
     const exchange: ThreadExchange = {
