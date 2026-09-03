@@ -224,7 +224,7 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
           <h1 className="text-6xl md:text-8xl lg:text-9xl font-black tracking-tighter mb-8 leading-[0.85] text-slate-900">
             Master your <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-700">
-              Defense.
+              Defense
             </span>
           </h1>
 
