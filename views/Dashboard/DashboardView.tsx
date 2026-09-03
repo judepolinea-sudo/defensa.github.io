@@ -75,8 +75,25 @@ const DashboardView: React.FC<Props> = ({
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState<null | 'csv' | 'pdf'>(null);
 
-  const handleExportData = () => {
+  // Always pull a fresh copy at export time — the `sessionHistory` prop can be
+  // stale or empty if the initial load raced a cold start / token refresh.
+  const loadSessionsForExport = async (): Promise<any[]> => {
+    try {
+      const res = await fetch('/api/sessions/my', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const fresh = await res.json();
+        if (Array.isArray(fresh) && fresh.length >= (sessionHistory?.length ?? 0)) return fresh;
+      }
+    } catch { /* fall through to the prop */ }
+    return sessionHistory ?? [];
+  };
+
+  const handleExportData = async () => {
+    setExportBusy('csv');
+    const allSessions = await loadSessionsForExport();
+    setExportBusy(null);
     const esc = (v: unknown) => {
       const s = v == null ? '' : String(v);
       return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -89,7 +106,7 @@ const DashboardView: React.FC<Props> = ({
       'Strengths', 'Improvements',
     ];
     const rows: (string | number)[][] = [];
-    (sessionHistory ?? []).forEach((s) => {
+    (allSessions ?? []).forEach((s: any) => {
       const date = s.date ? new Date(s.date).toLocaleString() : '';
       (s.history ?? []).forEach((qa, i) => {
         const f = (qa.feedback ?? {}) as any;
@@ -136,7 +153,10 @@ const DashboardView: React.FC<Props> = ({
   };
 
   const handleExportPDF = async () => {
+    setExportBusy('pdf');
+    const allSessions = await loadSessionsForExport();
     const { jsPDF } = await import('jspdf');
+    setExportBusy(null);
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
     const M = 50;                                   // page margin
@@ -227,7 +247,7 @@ const DashboardView: React.FC<Props> = ({
       gap(6);
     };
 
-    const sessions = sessionHistory ?? [];
+    const sessions: any[] = allSessions ?? [];
     const scored = sessions.filter((s) => (s.history?.length ?? 0) > 0);
     const avg = (nums: number[]) =>
       nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : 0;
@@ -262,6 +282,13 @@ const DashboardView: React.FC<Props> = ({
     if (catMeans.length) {
       kv('Strongest area', `${catMeans[0][0]} (${catMeans[0][1]}%)`);
       kv('Focus area', `${catMeans[catMeans.length - 1][0]} (${catMeans[catMeans.length - 1][1]}%)`);
+    }
+
+    if (sessions.length === 0) {
+      sectionTitle('Practice Sessions');
+      para('No practice sessions have been recorded for this account yet.', { size: 10, color: MUTE });
+      doc.save(`defensa-readiness-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+      return;
     }
 
     // ── Sessions overview table ─────────────────────────────────────
@@ -910,20 +937,24 @@ const DashboardView: React.FC<Props> = ({
                         <motion.button
                           type="button"
                           onClick={handleExportData}
-                          className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
+                          disabled={exportBusy !== null}
+                          className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-2xl text-white font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
                           whileHover={{ x: 4 }}
                           whileTap={{ scale: 0.99 }}
                         >
-                          Download CSV <Download className="w-5 h-5" />
+                          {exportBusy === 'csv' ? 'Preparing…' : 'Download CSV'}
+                          {exportBusy === 'csv' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                         </motion.button>
                         <motion.button
                           type="button"
                           onClick={handleExportPDF}
-                          className="w-full px-6 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-2xl text-slate-700 dark:text-slate-200 font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
+                          disabled={exportBusy !== null}
+                          className="w-full px-6 py-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50 rounded-2xl text-slate-700 dark:text-slate-200 font-black uppercase tracking-tighter text-sm flex justify-between items-center transition-colors"
                           whileHover={{ x: 4 }}
                           whileTap={{ scale: 0.99 }}
                         >
-                          Download PDF <Download className="w-5 h-5" />
+                          {exportBusy === 'pdf' ? 'Preparing…' : 'Download PDF'}
+                          {exportBusy === 'pdf' ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                         </motion.button>
                       </div>
                     </div>
