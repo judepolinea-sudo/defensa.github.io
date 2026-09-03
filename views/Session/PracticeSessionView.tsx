@@ -796,10 +796,17 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     const nextSec = getNextSection(previewCoverage, targetSection, score, threshold);
     if (!nextSec || timeLeft <= 0) return;
     const alreadyAsked = [...history.map(h => h.question), currentQuestion.question];
+    // The answer just given isn't in `history` yet, so the NEXT question's index
+    // is history.length + 1 (matches what advanceAfterAnswer computes). Passing
+    // history.length here rotated the panelist one slot short — which is why
+    // only the first 2 of 4 panelists ever asked anything.
+    const nextQuestionIndex = history.length + 1;
+    const answerJustGiven =
+      threadFinalAnswerRef.current || response || history[history.length - 1]?.answer || '';
     nextQPreloadRef.current = generateDynamicQuestion(
       project.abstractText || '', selectedPanelists, config?.difficulty || 'Intermediate',
-      previewCoverage, currentQuestion.question, history[history.length - 1]?.answer || '', score,
-      nextSec, history.length, ragChunks, alreadyAsked,
+      previewCoverage, currentQuestion.question, answerJustGiven, score,
+      nextSec, nextQuestionIndex, ragChunks, alreadyAsked,
     ).catch(() => null);   // preload is best-effort; real fetch (with its overlay) runs on advance
   }, [uiState]);
 
@@ -809,7 +816,15 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     // Purely score-driven now — a section keeps getting questions (threaded
     // follow-ups or fresh ones) until its mastery actually clears the
     // threshold, however many exchanges that takes.
-    const nextSection = getNextSection(newCoverage, targetSection, score, threshold);
+    let nextSection = getNextSection(newCoverage, targetSection, score, threshold);
+    // Every panelist on the panel should get at least one question. If the exam
+    // would otherwise end before everyone has asked, keep it going on the
+    // weakest section until each of the selected panelists has had a turn.
+    if (!nextSection && timeLeft > 0 && newHistory.length < selectedPanelists.length) {
+      nextSection =
+        Object.values(newCoverage).sort((a, b) => a.mastery - b.mastery)[0]?.section
+        ?? targetSection;
+    }
     if (!nextSection || timeLeft <= 0) { completeSession(newHistory); return; }
     setTargetSection(nextSection);
     const nextIndex = newHistory.length;
@@ -838,7 +853,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     try {
       await fetchQuestion(nextSection, newCoverage, lastQuestionText, capturedResponse, score, nextIndex, askedQs);
     } catch { /* handled — connection-lost overlay is up, "Try again" retries */ }
-  }, [coverageMap, targetSection, threshold, timeLeft, fetchQuestion]);
+  }, [coverageMap, targetSection, threshold, timeLeft, fetchQuestion, selectedPanelists.length]);
 
   const handleNext = useCallback(async () => {
     if (!currentQuestion) return;
@@ -847,9 +862,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     const score = currentEval?.finalScore ?? 0;
     const rootQuestion = rootQuestionRef.current ?? currentQuestion;
     const lastQuestionText = rootQuestion.question;
-    const wasThreaded = activeThreadExchanges.length > 0;
-    // Record EVERY question and answer in the thread, not just one "final"
-    // answer. This full text is what gets stored in Supabase's answer column.
+    // "Threaded" = the panel actually asked follow-ups (more than the one root
+    // exchange). A question answered in one go is not a thread.
+    const wasThreaded = activeThreadExchanges.length > 1;
+    // For a thread, record EVERY question and answer in it (this full text is
+    // what lands in Supabase's answer column); for a single exchange, just the
+    // answer itself.
     const answerForRecord = wasThreaded
       ? activeThreadExchanges
           .map((ex, i) =>
@@ -886,7 +904,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     if (!currentQuestion) return;
     const rootQuestion = rootQuestionRef.current ?? currentQuestion;
     const lastQuestionText = rootQuestion.question;
-    const wasThreaded = activeThreadExchanges.length > 0;
+    const wasThreaded = activeThreadExchanges.length > 1;
     const qa: QuestionAnswer = {
       question: lastQuestionText,
       answer: '(Skipped)',
