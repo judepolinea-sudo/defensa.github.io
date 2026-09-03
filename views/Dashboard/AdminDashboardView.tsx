@@ -284,6 +284,8 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
 
   const [metrics, setMetrics] = useState<any | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  const campusScope: { scoped: boolean; school: string | null; emailDomain: string } | null =
+    metrics?.campus ?? null;
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [broadcast, setBroadcast] = useState({ subject: "", message: "" });
   const [broadcastSending, setBroadcastSending] = useState(false);
@@ -340,11 +342,12 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     else if (activeTab === "deleted") fetchDeletedUsers();
   }, [activeTab, fetchUsers, fetchPendingRequests, fetchResetRequests, fetchSessions, fetchProjects, fetchDeletedUsers]);
 
-  // Keep the sidebar badge counts current regardless of the active tab.
+  // Keep the sidebar badge counts + campus context current regardless of tab.
   useEffect(() => {
     fetchPendingRequests();
     fetchResetRequests();
-  }, [fetchPendingRequests, fetchResetRequests]);
+    fetchMetrics();
+  }, [fetchPendingRequests, fetchResetRequests, fetchMetrics]);
 
   const handleAddUser = async () => {
     const fullName = joinName(newUser.firstName, "", newUser.lastName);
@@ -363,6 +366,17 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       toast.error("Department is required for Student accounts.");
       return;
     }
+    const isAdmin = newUser.role === UserRole.ADMIN;
+    if (isAdmin && !campusScope?.scoped) {
+      if (!newUser.school) {
+        toast.error("Choose the school this admin will manage.");
+        return;
+      }
+      if (/@(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|icloud|proton|aol)\./i.test(newUser.email)) {
+        toast.error("An admin must use a school email address, not a personal one.");
+        return;
+      }
+    }
     setActionLoading("add");
     try {
       const res = await fetch("/api/users/create", {
@@ -378,7 +392,9 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
           role: newUser.role,
           program: isStudent ? newUser.program : undefined,
           yearLevel: isStudent ? newUser.yearLevel : undefined,
-          school: isStudent ? newUser.school : undefined,
+          // Students and campus admins both need a school; the server also
+          // forces it to the creating admin's campus when they are scoped.
+          school: isStudent || isAdmin ? newUser.school : undefined,
         }),
       });
       const data = await res.json();
@@ -1947,21 +1963,31 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                         <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
                           Platform Branding
                         </label>
-                        <input
-                          type="text"
-                          className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none shadow-sm"
-                          defaultValue="Defensa AI"
-                        />
+                        <div className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-slate-700 dark:text-slate-300 shadow-sm">
+                          Defensa AI
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
+                          Managing Campus
+                        </label>
+                        <div className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-slate-700 dark:text-slate-300 shadow-sm">
+                          {campusScope?.scoped
+                            ? campusScope.school
+                            : "All campuses (super-admin)"}
+                        </div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
                           Campus Email Domain
                         </label>
-                        <input
-                          type="text"
-                          className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none shadow-sm"
-                          defaultValue="@nu-clark.edu.ph"
-                        />
+                        <div className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-slate-700 dark:text-slate-300 shadow-sm">
+                          {campusScope?.emailDomain ? `@${campusScope.emailDomain}` : "—"}
+                        </div>
+                        <p className="mt-2 text-[11px] font-bold text-slate-400">
+                          Derived from your admin email. Students who register under this school are
+                          managed by this account.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -2158,7 +2184,12 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                     <option value={UserRole.ADMIN}>Administrator</option>
                   </select>
                 </div>
-                {newUser.role === UserRole.STUDENT && (
+                {campusScope?.scoped ? (
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400">
+                    New accounts are added to your campus: <span className="text-slate-800 dark:text-slate-200">{campusScope.school}</span>
+                    {campusScope.emailDomain ? ` · @${campusScope.emailDomain}` : ""}
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">
                       School *
@@ -2176,6 +2207,12 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                         </option>
                       ))}
                     </select>
+                    {newUser.role === UserRole.ADMIN && (
+                      <p className="mt-2 text-[11px] font-bold text-slate-400">
+                        This admin will manage <em>{newUser.school}</em> and must sign in with a school email
+                        (e.g. name@nu-clark.edu.ph), not a personal Gmail/Yahoo/Outlook address.
+                      </p>
+                    )}
                   </div>
                 )}
                 <div>

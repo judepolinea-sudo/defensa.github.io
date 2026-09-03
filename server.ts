@@ -291,6 +291,27 @@ async function verifyAndGetCaller(authHeader: string | undefined) {
 }
 
 // ===============================================================
+// CAMPUS SCOPING
+// A campus admin only manages accounts from their own institution.
+// The campus key is the admin's email domain (e.g. "nu-clark.edu.ph").
+// An admin with no school set is the unrestricted super-admin.
+// ===============================================================
+
+const FREE_WEBMAIL_RE =
+  /@(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|proton|protonmail|icloud|me|aol|gmx|mail\.com|zoho)\.[a-z.]+$/i;
+
+function emailDomain(email?: string | null): string {
+  return (email || "").split("@")[1]?.toLowerCase().trim() ?? "";
+}
+
+// Returns the school an admin's view should be limited to, or null for a
+// super-admin (no school) who sees the whole platform.
+function campusScopeOf(caller: { profile: { role?: string; school?: string | null; email?: string | null } }): string | null {
+  if (caller.profile.role !== "ADMIN") return null;
+  return caller.profile.school?.trim() || null;
+}
+
+// ===============================================================
 // BOOTSTRAP ADMIN
 // If no users exist in Supabase and the Firebase Auth account
 // for INITIAL_ADMIN_EMAIL already exists, auto-provision it.
@@ -304,8 +325,7 @@ export async function bootstrapAdmin() {
 
     // The bootstrap admin should be an institution-owned mailbox, not a
     // developer's personal webmail.
-    const FREE_WEBMAIL = /@(gmail|googlemail|yahoo|ymail|outlook|hotmail|live|proton|protonmail|icloud|aol)\.[a-z.]+$/i;
-    if (FREE_WEBMAIL.test(initialAdminEmail)) {
+    if (FREE_WEBMAIL_RE.test(initialAdminEmail)) {
       console.warn(
         `⚠️  INITIAL_ADMIN_EMAIL (${initialAdminEmail}) is a personal webmail address. ` +
           `Set it to an institution-owned admin mailbox before going live.`,
@@ -1125,12 +1145,16 @@ export async function createApp() {
       const windowMinutes = 3;
       const cutoff = new Date(Date.now() - windowMinutes * 60_000).toISOString();
 
-      const { data, error } = await supabase
+      let onlineQuery = supabase
         .from("users")
-        .select("firebase_uid, email, full_name, role, program, year_level, last_login_at, last_seen_at")
+        .select("firebase_uid, email, full_name, role, program, year_level, school, last_login_at, last_seen_at")
         .eq("is_deleted", false)
         .gte("last_seen_at", cutoff)
         .order("last_login_at", { ascending: false });
+      const campus = campusScopeOf(caller);
+      if (campus) onlineQuery = onlineQuery.or(`school.eq.${campus},role.eq.ADMIN`);
+
+      const { data, error } = await onlineQuery;
 
       if (error) throw new Error(error.message);
 
@@ -1164,23 +1188,26 @@ export async function createApp() {
 
       const mem = process.memoryUsage();
       const onlineCutoff = new Date(Date.now() - 3 * 60_000).toISOString();
+      const campus = campusScopeOf(caller);
+      // Applies the campus filter to a users-table count query.
+      const scopedUsers = () => {
+        const q = supabase.from("users").select("id", { count: "exact", head: true }).eq("is_deleted", false);
+        return campus ? q.eq("school", campus) : q;
+      };
 
       // Timed DB round-trip = a real latency + liveness signal.
       const dbStart = Date.now();
-      const usersHead = await supabase
-        .from("users")
-        .select("id", { count: "exact", head: true })
-        .eq("is_deleted", false);
+      const usersHead = await scopedUsers();
       const dbLatencyMs = Date.now() - dbStart;
       const dbOk = !usersHead.error;
 
       const [students, admins, sessionsHead, projectsHead, onlineHead, feedbackHead] =
         await Promise.all([
-          supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "STUDENT").eq("is_deleted", false),
+          scopedUsers().eq("role", "STUDENT"),
           supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "ADMIN").eq("is_deleted", false),
           supabase.from("defense_sessions").select("id", { count: "exact", head: true }),
           supabase.from("projects").select("id", { count: "exact", head: true }),
-          supabase.from("users").select("id", { count: "exact", head: true }).eq("is_deleted", false).gte("last_seen_at", onlineCutoff),
+          scopedUsers().gte("last_seen_at", onlineCutoff),
           supabase.from("session_feedback").select("id", { count: "exact", head: true }),
         ]);
 
@@ -1227,6 +1254,11 @@ export async function createApp() {
           trainedModel: ownAiReachable,
         },
         email: { configured: emailConfigured },
+        campus: {
+          school: campus,                          // null = super-admin (all campuses)
+          emailDomain: emailDomain(caller.profile.email),
+          scoped: !!campus,
+        },
       });
     } catch (error: any) {
       console.error("admin/metrics error:", error);
@@ -1248,11 +1280,14 @@ export async function createApp() {
         return res.status(400).json({ message: "Subject and message are both required." });
       }
 
-      const { data: recips, error } = await supabase
+      let recipQuery = supabase
         .from("users")
         .select("email, full_name")
         .eq("role", "STUDENT")
         .eq("is_deleted", false);
+      const campus = campusScopeOf(caller);
+      if (campus) recipQuery = recipQuery.eq("school", campus);
+      const { data: recips, error } = await recipQuery;
       if (error) throw new Error(error.message);
 
       const list = (recips ?? []).filter((r) => r.email);
@@ -1306,6 +1341,28 @@ export async function createApp() {
         });
       }
 
+      // A new campus admin must use an institution mailbox and be tied to a
+      // school — that school (and email domain) becomes the campus they govern.
+      if (normalizedRole === "ADMIN") {
+        if (FREE_WEBMAIL_RE.test(email)) {
+          return res.status(400).json({
+            message:
+              "An admin account must use your school email (e.g. name@nu-clark.edu.ph), not a personal Gmail/Yahoo/Outlook address.",
+          });
+        }
+        if (!school || !String(school).trim()) {
+          return res.status(400).json({
+            message: "Select the school this admin will manage.",
+          });
+        }
+      }
+
+      // A campus admin can only create accounts inside their own campus.
+      const callerCampus = campusScopeOf(caller);
+      const effectiveSchool = callerCampus
+        ? callerCampus
+        : (school || null);
+
       const userRecord = await auth.createUser({
         email,
         password,
@@ -1320,7 +1377,7 @@ export async function createApp() {
         role: normalizedRole,
         program: program || null,
         yearLevel: yearLevel || null,
-        school: school || null,
+        school: effectiveSchool,
         isDeleted: false,
         createdBy: caller.decoded.uid,
       });
@@ -1363,6 +1420,11 @@ export async function createApp() {
       const includeDeleted = req.query.includeDeleted === "true";
       let query = supabase.from("users").select("*");
       if (!includeDeleted) query = query.eq("is_deleted", false);
+
+      // Campus admins see only their own school (plus any admins, so a campus
+      // admin still sees the wider admin roster). Super-admin sees everyone.
+      const campus = campusScopeOf(caller);
+      if (campus) query = query.or(`school.eq.${campus},role.eq.ADMIN`);
 
       const { data: users, error } = await query;
       if (error) throw new Error(error.message);
@@ -2966,11 +3028,26 @@ export async function createApp() {
       const limit = Math.min(parseInt(String(req.query.limit ?? "50"), 10), 200);
       const offset = (page - 1) * limit;
 
-      const { data: sessions, error } = await supabase
+      // Campus admins only see sessions run by students of their own school.
+      const campus = campusScopeOf(caller);
+      let campusUids: string[] | null = null;
+      if (campus) {
+        const { data: campusStudents } = await supabase
+          .from("users")
+          .select("firebase_uid")
+          .eq("school", campus)
+          .eq("is_deleted", false);
+        campusUids = (campusStudents ?? []).map((u) => u.firebase_uid);
+        if (campusUids.length === 0) return res.json([]);
+      }
+
+      let sessQuery = supabase
         .from("defense_sessions")
         .select("*")
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
+      if (campusUids) sessQuery = sessQuery.in("student_firebase_uid", campusUids);
+      const { data: sessions, error } = await sessQuery;
 
       if (error) throw new Error(error.message);
 
