@@ -18,6 +18,22 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        // Split big, rarely-changing vendor code into its own long-cached
+        // chunks so the first paint only downloads what the landing/login
+        // screens actually need. The heavy views are React.lazy()'d in App.tsx.
+        chunkSizeWarningLimit: 900,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              'vendor-firebase': ['firebase/app', 'firebase/auth'],
+              'vendor-charts': ['recharts'],
+              'vendor-motion': ['motion/react'],
+              'vendor-icons': ['lucide-react'],
+            },
+          },
+        },
       }
     };
 });

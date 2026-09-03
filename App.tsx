@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
+// Auth-flow screens load eagerly — they're the first paint and are small.
 import LandingView from "./views/Landing/LandingView";
 import LoginView from "./views/Auth/LoginView";
 import RegisterView from "./views/Auth/RegisterView";
 import VerificationView from "./views/Auth/VerificationView";
-import DashboardView from "./views/Dashboard/DashboardView";
-import AdminDashboardView from "./views/Dashboard/AdminDashboardView";
-import ProjectSetupView from "./views/Project/ProjectSetupView";
-import AbstractUploadView from "./views/Project/AbstractUploadView";
-import SessionConfigView from "./views/Session/SessionConfigView";
-import PracticeSessionView from "./views/Session/PracticeSessionView";
-import SessionSummaryView from "./views/Session/SessionSummaryView";
-import ReadinessDashboardView from "./views/Dashboard/ReadinessDashboardView";
+// Everything past sign-in is code-split so the initial bundle stays small.
+const DashboardView = lazy(() => import("./views/Dashboard/DashboardView"));
+const AdminDashboardView = lazy(() => import("./views/Dashboard/AdminDashboardView"));
+const ProjectSetupView = lazy(() => import("./views/Project/ProjectSetupView"));
+const AbstractUploadView = lazy(() => import("./views/Project/AbstractUploadView"));
+const SessionConfigView = lazy(() => import("./views/Session/SessionConfigView"));
+const PracticeSessionView = lazy(() => import("./views/Session/PracticeSessionView"));
+const SessionSummaryView = lazy(() => import("./views/Session/SessionSummaryView"));
+const ReadinessDashboardView = lazy(() => import("./views/Dashboard/ReadinessDashboardView"));
 import { ProjectProfile, SessionResult, User, UserRole } from "./types";
 import {
   subscribeToAuthChanges,
@@ -396,8 +398,15 @@ const App: React.FC = () => {
     );
   }
 
+  const RouteFallback = (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 overflow-x-hidden">
+     <Suspense fallback={RouteFallback}>
       {currentView === ViewState.LOADING && (
         <div className="flex items-center justify-center min-h-screen">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
@@ -612,6 +621,7 @@ const App: React.FC = () => {
           onNewSession={() => setCurrentView(ViewState.SESSION_CONFIG)}
         />
       )}
+     </Suspense>
     </div>
   );
 };

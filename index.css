@@ -6,6 +6,17 @@ html {
   scroll-behavior: smooth;
 }
 
+body {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  background-color: #f8fafc;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
 /* Chart grid line color (Recharts CartesianGrid/PolarGrid stroke) — SVG
    presentation attributes don't take Tailwind's dark: classes, so this
    follows the system theme via a plain CSS custom property instead. */

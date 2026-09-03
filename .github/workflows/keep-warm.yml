@@ -1,0 +1,31 @@
+name: Keep Render awake
+
+# Render's free tier spins the service down after ~15 min idle, and the next
+# visitor then waits ~50s for a cold start. Pinging /api/health every 10 min
+# keeps the container running so the app loads immediately.
+#
+# Set the URL once:  Repo → Settings → Secrets and variables → Actions →
+#   Variables → New variable →  name: RENDER_URL   value: https://<your-service>.onrender.com
+# (falls back to the URL in render.yaml if the variable is unset).
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          URL="${{ vars.RENDER_URL || 'https://defensa-7ggt.onrender.com' }}"
+          echo "Pinging $URL/api/health"
+          for i in 1 2 3; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "$URL/api/health" || echo "000")
+            echo "attempt $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          echo "health check did not return 200"
+          exit 1
