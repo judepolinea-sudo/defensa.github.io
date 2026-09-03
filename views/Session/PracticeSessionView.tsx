@@ -5,7 +5,7 @@ import {
   FastForward, Info, RefreshCw, Volume2, VolumeX,
   Square, Play, Edit3, StopCircle, BarChart3,
   Clock, Target, BookOpen, Award, TrendingUp,
-  CircleDot, Users, FileText, Zap,
+  CircleDot, Users, FileText, Zap, WifiOff,
 } from 'lucide-react';
 import {
   speakText, stopSpeaking, startSTT, primeSpeechSynthesis,
@@ -18,7 +18,7 @@ import { PANELISTS } from '../../constants';
 import { getSessionToken } from '../../services/authService';
 import {
   generateDynamicQuestion, evaluateResponseDetailed, evaluateSatisfaction,
-  RubricEvaluation, PanelQuestion,
+  RubricEvaluation, PanelQuestion, AIUnavailableError,
   SectionCoverage, CoverageMap,
   detectDocumentSections, initCoverageMap, updateCoverage, getNextSection,
   createChunks, getEmbeddings, resetContextualFallback,
@@ -228,6 +228,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showInactivityPrompt, setShowInactivityPrompt] = useState(false);
 
+  // ── Connectivity ─────────────────────────────────────────────────
+  // A defense simulation needs a live AI panel. If the network drops or every
+  // AI provider fails, the session pauses on a blocking overlay rather than
+  // limping along on offline heuristics.
+  const [connectionLost, setConnectionLost] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const retryActionRef = useRef<null | (() => Promise<void>)>(null);
+
   // ── Inactivity refs ──────────────────────────────────────────────
   const inactivityWarnRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inactivityEndRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -259,7 +267,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
   const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spokenQRef = useRef<string>('');
   const isListeningRef = useRef(false);
-  const nextQPreloadRef = useRef<Promise<PanelQuestion> | null>(null);
+  const nextQPreloadRef = useRef<Promise<PanelQuestion | null> | null>(null);
   const sessionCompletedRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rootQuestionRef = useRef<PanelQuestion | null>(null);
@@ -364,6 +372,37 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     };
   }, [uiState, resetInactivityTimer]);
 
+  // Pause the session the moment the browser reports the network is gone.
+  useEffect(() => {
+    const onOffline = () => {
+      if (uiState === 'active' || uiState === 'evaluating' || uiState === 'generating') {
+        setConnectionLost(true);
+      }
+    };
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, [uiState]);
+
+  // Re-run whatever AI call failed, once the student hits "Try again".
+  const handleRetryConnection = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      // still offline — leave the overlay up
+      return;
+    }
+    const action = retryActionRef.current;
+    if (!action) { setConnectionLost(false); return; }
+    setIsRetrying(true);
+    try {
+      await action();
+      retryActionRef.current = null;
+      setConnectionLost(false);
+    } catch {
+      // still failing — keep the overlay
+    } finally {
+      setIsRetrying(false);
+    }
+  }, []);
+
   const threshold = MASTERY_THRESHOLD[config?.difficulty] ?? 65;
   const coveredCount = Object.values(coverageMap).filter(s => s.covered).length;
   const totalSections = Object.keys(coverageMap).length;
@@ -457,21 +496,14 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       setStartTime(Date.now());
     } catch (err) {
       console.error('Question generation failed:', err);
-      setCurrentQuestion({
-        question: `Based on your research, explain the key aspects of "${section}" in your study.`,
-        source_section: section,
-        source_excerpt: '',
-        difficulty: 'Easy' as any,
-        question_type: 'Clarification',
-        reason: 'Baseline section assessment.',
-        panelist: selectedPanelists[0] || PANELISTS[0],
-        category: section,
-        expectedKeywords: [],
-      });
-      setStartTime(Date.now());
-    } finally {
+      // No live panel → pause the session; don't fabricate a question offline.
+      retryActionRef.current = () =>
+        fetchQuestion(section, map, lastQ, lastA, lastScore, qIndex, askedQs);
+      setConnectionLost(true);
       setIsGeneratingQuestion(false);
+      throw err instanceof AIUnavailableError ? err : new AIUnavailableError();
     }
+    setIsGeneratingQuestion(false);
   }, [project, selectedPanelists, config?.difficulty, ragChunks]);
 
   const initializeSession = useCallback(async () => {
@@ -490,8 +522,12 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
     const first = sections[0] || 'Abstract';
     setTargetSection(first);
     setQuestionsAsked(1);
-    await fetchQuestion(first, map, '', '', 0, 0);
+    // The overlay (connectionLost) covers the screen if this throws; its
+    // "Try again" button re-runs fetchQuestion for this same first question.
     setUiState('active');
+    try {
+      await fetchQuestion(first, map, '', '', 0, 0);
+    } catch { /* handled — overlay is up */ }
   }, [project, config?.selectedSections, fetchQuestion, isVoiceEnabled]);
 
   const completeSession = (finalHistory: QuestionAnswer[]) => {
@@ -598,13 +634,21 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Evaluation timed out.')), EVAL_TIMEOUT_MS)),
       ]);
       setCurrentEval(evalRes);
+      setUiState('feedback');
     } catch (e: any) {
+      if (e instanceof AIUnavailableError) {
+        // No live panel → pause; retry re-scores this same answer.
+        retryActionRef.current = () => runEvaluation(text);
+        setConnectionLost(true);
+        setUiState('evaluating');
+        return;
+      }
+      // A non-connectivity failure (e.g. eval timeout) — let the student move on.
       setEvalError(e?.message || 'Evaluation failed. You can continue to the next question.');
       setCurrentEval(null);
-    } finally {
       setUiState('feedback');
     }
-  }, [project, currentQuestion, startTime]);
+  }, [project, currentQuestion, startTime, history]);
 
   const handleSubmit = async (answerOverride?: string) => {
     const capturedAnswer = (answerOverride ?? response).trim();
@@ -658,15 +702,13 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
         currentFollowUpCount,
         consecutiveEvasiveCount,
       );
-    } catch {
-      // Fallback: treat as satisfied so the session can continue
-      satResult = {
-        satisfaction_score: 60,
-        verdict: currentFollowUpCount >= MAX_FOLLOWUPS ? 'satisfied' : 'needs_followup',
-        gaps: [],
-        followup_question: null,
-        panelist_remark: "Let's move on.",
-      };
+    } catch (err) {
+      // No live panel → pause; the student re-submits this same answer on retry.
+      console.error('Satisfaction evaluation failed:', err);
+      retryActionRef.current = () => handleSubmit(capturedAnswer);
+      setConnectionLost(true);
+      setIsThreadEvaluating(false);
+      return;
     }
     }
 
@@ -758,7 +800,7 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
       project.abstractText || '', selectedPanelists, config?.difficulty || 'Intermediate',
       previewCoverage, currentQuestion.question, history[history.length - 1]?.answer || '', score,
       nextSec, history.length, ragChunks, alreadyAsked,
-    );
+    ).catch(() => null);   // preload is best-effort; real fetch (with its overlay) runs on advance
   }, [uiState]);
 
   const advanceAfterAnswer = useCallback(async (capturedResponse: string, score: number, newHistory: QuestionAnswer[], lastQuestionText: string) => {
@@ -782,16 +824,20 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('preload timeout')), 50_000)),
         ]);
         nextQPreloadRef.current = null;
-        setCurrentQuestion(preloaded);
-        setStartTime(Date.now());
-        setIsGeneratingQuestion(false);
-        return;
+        if (preloaded) {
+          setCurrentQuestion(preloaded);
+          setStartTime(Date.now());
+          setIsGeneratingQuestion(false);
+          return;
+        }
       } catch {
         nextQPreloadRef.current = null;
       }
     }
     const askedQs = newHistory.map(h => h.question);
-    await fetchQuestion(nextSection, newCoverage, lastQuestionText, capturedResponse, score, nextIndex, askedQs);
+    try {
+      await fetchQuestion(nextSection, newCoverage, lastQuestionText, capturedResponse, score, nextIndex, askedQs);
+    } catch { /* handled — connection-lost overlay is up, "Try again" retries */ }
   }, [coverageMap, targetSection, threshold, timeLeft, fetchQuestion]);
 
   const handleNext = useCallback(async () => {
@@ -1201,6 +1247,36 @@ const PracticeSessionInner: React.FC<Props> = ({ project, config, onComplete, on
               <button type="button" onClick={() => { setShowInactivityPrompt(false); completeSession(history); }}
                 className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-2xl uppercase tracking-widest text-xs transition-all">
                 End Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONNECTION LOST ────────────────────────────────────────
+          A live viva needs a live panel. When the network drops or every AI
+          provider fails, the session halts here until the student reconnects
+          — it does not continue on offline heuristics. */}
+      {connectionLost && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
+          <div className="bg-white border border-slate-200 rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
+            <div className="w-16 h-16 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-center mx-auto mb-5">
+              <WifiOff className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">Connection lost</h3>
+            <p className="text-slate-500 text-sm mb-7 leading-relaxed">
+              Defensa can't reach the AI panel, so the session is paused &mdash; it won't
+              continue without one. Reconnect to the internet, then hit Try again.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button type="button" onClick={handleRetryConnection} disabled={isRetrying}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-black rounded-2xl uppercase tracking-widest text-xs transition-all flex items-center justify-center gap-2">
+                {isRetrying ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {isRetrying ? 'Reconnecting…' : 'Try again'}
+              </button>
+              <button type="button" onClick={() => { setConnectionLost(false); stopSpeaking(); sttRef.current?.stop(); completeSession(history); }}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black rounded-2xl uppercase tracking-widest text-xs transition-all">
+                End session now
               </button>
             </div>
           </div>

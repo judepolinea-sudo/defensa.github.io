@@ -1,6 +1,19 @@
 import { DifficultyLevel, Panelist, RagChunk, SessionPhase } from "../types";
 import { PANELISTS } from "../constants";
 
+// Thrown when the live AI panel can't be reached (no internet, server down,
+// every provider failed). The session UI catches this and pauses instead of
+// silently continuing on offline heuristics — a defense simulator with no
+// examiner behind it isn't a real simulation.
+export class AIUnavailableError extends Error {
+  constructor(
+    message = "Can't reach the AI panel. Check your internet connection and try again.",
+  ) {
+    super(message);
+    this.name = "AIUnavailableError";
+  }
+}
+
 // ============================================================
 // VIRTUAL VIVA VOCE DEFENSE SIMULATION ENGINE — SYSTEM PROMPTS
 // ============================================================
@@ -1173,25 +1186,8 @@ Return ONLY this JSON:
         : [],
     };
   } catch (err) {
-    console.error(
-      "[AI] generateDynamicQuestion failed, using contextual fallback:",
-      err,
-    );
-    const phase = phaseForSection(targetSection);
-    const fallback = getContextualFallbackQuestion(phase, panelist, abstract, askedQuestions, targetSection);
-    return {
-      question: fallback.question,
-      source_section: targetSection,
-      source_excerpt: abstract.substring(0, 80).trim(),
-      difficulty: adaptiveDifficulty as any,
-      question_type: "Clarification",
-      reason: "Assessing understanding of this research section.",
-      panelist,
-      category: fallback.category,
-      expectedKeywords: Array.isArray(fallback.expectedKeywords)
-        ? fallback.expectedKeywords
-        : [],
-    };
+    console.error("[AI] generateDynamicQuestion failed:", err);
+    throw new AIUnavailableError();
   }
 };
 
@@ -1744,15 +1740,9 @@ JUDGE OUTPUT — Return ONLY this JSON:
 
     return parsed;
   } catch (err) {
-    console.error(
-      "[AI] evaluateResponseDetailed failed, using local fallback:",
-      err,
-    );
-    const kw =
-      expectedKeywords.length > 0
-        ? expectedKeywords
-        : extractAbstractTerms(abstract);
-    return localEvaluate(question, answer, kw, responseTimeMs);
+    if (err instanceof AIUnavailableError) throw err;
+    console.error("[AI] evaluateResponseDetailed failed:", err);
+    throw new AIUnavailableError();
   }
 };
 
@@ -2036,17 +2026,9 @@ Return ONLY valid JSON — no markdown, no explanation:
     }
 
     return parsed;
-  } catch {
-    const local = localSatisfaction(rootQuestion, latestAnswer, abstract, followUpCount);
-    if (forceClose) {
-      return {
-        ...local,
-        verdict: local.satisfaction_score >= SAT_THRESHOLD ? 'satisfied' : 'evasive',
-        followup_question: null,
-        panelist_remark:
-          "Let's move on — strengthen this part of your study before your actual defense.",
-      };
-    }
-    return local;
+  } catch (err) {
+    if (err instanceof AIUnavailableError) throw err;
+    console.error("[AI] evaluateSatisfaction failed:", err);
+    throw new AIUnavailableError();
   }
 };
