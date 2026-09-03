@@ -84,17 +84,20 @@ const ROLE_BADGE: Record<string, string> = {
     "border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950",
 };
 
-function relativeTime(iso: string | null | undefined): string {
+// Presence label for the "Online Now" table. A signed-in browser sends a
+// heartbeat every ~45s, so an open tab's last_seen_at is always near zero —
+// showing a flickering "12s ago / just now" there reads as broken. Treat
+// anything within ~2 min as simply "Active now"; older entries count up.
+function presenceLabel(iso: string | null | undefined, nowMs: number): string {
   if (!iso) return "—";
   const then = new Date(iso).getTime();
   if (isNaN(then)) return "—";
-  const secs = Math.max(0, Math.round((Date.now() - then) / 1000));
-  if (secs < 10) return "just now";
-  if (secs < 60) return `${secs}s ago`;
+  const secs = Math.max(0, Math.round((nowMs - then) / 1000));
+  if (secs < 120) return "Active now";
   const mins = Math.round(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `${mins} min ago`;
   const hrs = Math.round(mins / 60);
-  return `${hrs}h ago`;
+  return `${hrs} hr ago`;
 }
 
 const pageVariants = {
@@ -284,6 +287,8 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
 
   const [metrics, setMetrics] = useState<any | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
+  // Ticks so relative timestamps count up between the 30s data refetches.
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const campusScope: { scoped: boolean; school: string | null; emailDomain: string } | null =
     metrics?.campus ?? null;
   const [broadcastOpen, setBroadcastOpen] = useState(false);
@@ -328,9 +333,11 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     if (activeTab !== "health") return;
     fetchOnlineUsers();
     fetchMetrics();
+    setNowMs(Date.now());
     const id = setInterval(fetchOnlineUsers, 30_000);
     const m = setInterval(fetchMetrics, 60_000);
-    return () => { clearInterval(id); clearInterval(m); };
+    const t = setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => { clearInterval(id); clearInterval(m); clearInterval(t); };
   }, [activeTab, fetchOnlineUsers, fetchMetrics]);
 
   useEffect(() => {
@@ -1046,6 +1053,9 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                               <div>
                                 <p className="font-black text-slate-800 dark:text-slate-100 leading-none mb-1 uppercase tracking-tighter text-sm">
                                   {u.fullName}
+                                  {user?.email && u.email?.toLowerCase() === user.email.toLowerCase() && (
+                                    <span className="ml-2 text-[9px] text-blue-500 tracking-widest">(YOU)</span>
+                                  )}
                                 </p>
                                 <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
                                   {u.email}
@@ -1071,7 +1081,7 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                               : "—"}
                           </td>
                           <td className="px-8 py-5 text-[11px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                            {relativeTime(u.lastSeenAt)}
+                            {presenceLabel(u.lastSeenAt, nowMs)}
                           </td>
                         </motion.tr>
                       ))}
