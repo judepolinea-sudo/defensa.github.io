@@ -452,7 +452,7 @@ const AbstractUploadView: React.FC<Props> = ({ project, user, onComplete, onBack
                   : 'bg-slate-50 dark:bg-slate-950 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800'
               }`}>
                 <Sparkles className="w-4 h-4" />
-                {aiIndexed ? 'Defensa AI — document indexed' : 'Defensa AI — offline (using cloud AI)'}
+                {aiIndexed ? 'Defensa AI — trained model indexed this document' : 'Defensa AI — online (cloud engine)'}
               </div>
 
               {/* Folder results summary */}

@@ -42,7 +42,7 @@ const SessionConfigView: React.FC<Props> = ({ project, onStart, onBack }) => {
   const [outline, setOutline] = useState<DocumentOutline | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedSectionIds, setSelectedSectionIds] = useState<Set<string>>(new Set());
-  const [ownAiStatus, setOwnAiStatus] = useState<{ online: boolean; indexedChunks: number } | null>(null);
+  const [ownAiStatus, setOwnAiStatus] = useState<{ online: boolean; indexedChunks: number; engine?: string } | null>(null);
 
   useEffect(() => {
     if (!project?.abstractText) return;
@@ -52,8 +52,8 @@ const SessionConfigView: React.FC<Props> = ({ project, onStart, onBack }) => {
   useEffect(() => {
     fetch('/api/ai/status')
       .then(r => r.json())
-      .then(d => setOwnAiStatus({ online: d.online, indexedChunks: d.indexedChunks ?? 0 }))
-      .catch(() => setOwnAiStatus({ online: false, indexedChunks: 0 }));
+      .then(d => setOwnAiStatus({ online: d.online, indexedChunks: d.indexedChunks ?? 0, engine: d.engine }))
+      .catch(() => setOwnAiStatus({ online: false, indexedChunks: 0, engine: 'none' }));
   }, []);
 
   const handleProceedToOutline = useCallback(async () => {
@@ -123,19 +123,27 @@ const SessionConfigView: React.FC<Props> = ({ project, onStart, onBack }) => {
             <h1 className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tighter uppercase">
               {step === 1 ? 'Configure Practice Session' : 'Select Defense Scope'}
             </h1>
-            {ownAiStatus && (
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold shrink-0 ${
-                ownAiStatus.online
-                  ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-200'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-800'
-              }`}>
-                <Cpu className="w-3.5 h-3.5" />
-                {ownAiStatus.online
-                  ? `Defensa AI online · ${ownAiStatus.indexedChunks} chunks`
-                  : 'Defensa AI offline · using cloud'}
-                {ownAiStatus.online ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              </div>
-            )}
+            {ownAiStatus && (() => {
+              const engine = ownAiStatus.engine ?? (ownAiStatus.online ? 'trained' : 'none');
+              const operational = engine === 'trained' || engine === 'cloud';
+              const label =
+                engine === 'trained'
+                  ? `Defensa AI · trained model · ${ownAiStatus.indexedChunks} chunks`
+                  : engine === 'cloud'
+                    ? 'Defensa AI · online (cloud engine)'
+                    : 'Defensa AI · unavailable';
+              return (
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold shrink-0 ${
+                  operational
+                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-200'
+                    : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300 border border-red-200'
+                }`}>
+                  <Cpu className="w-3.5 h-3.5" />
+                  {label}
+                  {operational ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Step indicator */}

@@ -3223,16 +3223,36 @@ export async function createApp() {
     }
   }
 
-  // GET /api/ai/status — tells the frontend whether own-ai is online + how many chunks indexed
+  // GET /api/ai/status — reports which AI engine is serving requests.
+  //   engine "trained" → the fine-tuned Defensa AI model (own-ai/serve.py) is up
+  //   engine "cloud"   → running on the cloud LLM cascade (Groq/Gemini/OpenRouter)
+  //   engine "none"    → no provider reachable at all
   app.get("/api/ai/status", async (_req, res) => {
+    const cloudReady = !!(
+      process.env.GROQ_API_KEY ||
+      process.env.GEMINI_API_KEY ||
+      process.env.OPENROUTER_API_KEY
+    );
     try {
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 3_000);
       const resp = await fetch(`${OWN_AI_URL}/health`, { signal: controller.signal });
       const data: any = await resp.json();
-      res.json({ online: true, indexedChunks: data.indexed_chunks ?? 0, model: data.model ?? "unknown" });
+      res.json({
+        online: true,
+        engine: "trained",
+        indexedChunks: data.indexed_chunks ?? 0,
+        model: data.model ?? "defensa-ai",
+        cloudReady,
+      });
     } catch {
-      res.json({ online: false, indexedChunks: 0, model: null });
+      res.json({
+        online: cloudReady,
+        engine: cloudReady ? "cloud" : "none",
+        indexedChunks: 0,
+        model: cloudReady ? "cloud-cascade" : null,
+        cloudReady,
+      });
     }
   });
 

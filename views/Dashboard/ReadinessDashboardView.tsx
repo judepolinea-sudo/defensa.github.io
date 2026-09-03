@@ -519,10 +519,40 @@ const ReadinessDashboardView: React.FC<Props> = ({ history, onBack, onNewSession
                             </div>
                             <h4 className="text-xl font-bold text-slate-800 dark:text-slate-100 leading-relaxed">"{qa.question}"</h4>
                           </div>
-                          <div className="bg-slate-50 dark:bg-slate-950 p-8 rounded-3xl border border-slate-100 dark:border-slate-800">
-                            <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Your Answer</p>
-                            <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{qa.answer || '(no response recorded)'}</p>
-                          </div>
+                          {Array.isArray((qa as any).threadExchanges) && (qa as any).threadExchanges.length > 1 ? (
+                            <div className="space-y-4">
+                              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                                Your Answers &mdash; {(qa as any).threadExchanges.length} turns{(qa as any).followUpsUsed ? `, ${(qa as any).followUpsUsed} follow-up${(qa as any).followUpsUsed !== 1 ? 's' : ''}` : ''}
+                              </p>
+                              {((qa as any).threadExchanges as any[]).map((ex, exi) => (
+                                <div key={exi} className="bg-slate-50 dark:bg-slate-950 rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+                                  <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1">
+                                      {ex.isFollowUp ? `Follow-up Question ${exi}` : 'Question'}
+                                      {typeof ex.satisfactionScore === 'number' && (
+                                        <span className={`ml-2 ${ex.satisfactionScore >= 65 ? 'text-green-600' : ex.satisfactionScore >= 40 ? 'text-amber-600' : 'text-red-500'}`}>
+                                          {Math.round(ex.satisfactionScore)}% satisfied
+                                        </span>
+                                      )}
+                                    </p>
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-relaxed">&ldquo;{ex.question}&rdquo;</p>
+                                  </div>
+                                  <div className="px-6 py-4">
+                                    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-2 tracking-widest">Your Answer</p>
+                                    <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed">{ex.answer || '(no response recorded)'}</p>
+                                    {ex.panelistRemark && (
+                                      <p className="text-xs italic text-slate-400 dark:text-slate-500 mt-2">Panelist: {ex.panelistRemark}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="bg-slate-50 dark:bg-slate-950 p-8 rounded-3xl border border-slate-100 dark:border-slate-800">
+                              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase mb-3 tracking-widest">Your Answer</p>
+                              <p className="text-slate-600 dark:text-slate-400 font-medium leading-relaxed whitespace-pre-line">{qa.answer || '(no response recorded)'}</p>
+                            </div>
+                          )}
                           {(qa.feedback.strengths?.length > 0 || qa.feedback.improvements?.length > 0) && (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {qa.feedback.strengths?.length > 0 && (
