@@ -2279,21 +2279,22 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                       >
                         Year Level
                       </label>
-                      <select
+                      <input
                         id="new-user-year"
-                        className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold appearance-none focus:ring-2 focus:ring-red-500 outline-none"
+                        list="new-user-year-options"
+                        autoComplete="off"
+                        placeholder="3rd Year (or type a higher year)"
+                        className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold focus:ring-2 focus:ring-red-500 outline-none"
                         value={newUser.yearLevel}
                         onChange={(e) =>
                           setNewUser({ ...newUser, yearLevel: e.target.value })
                         }
-                      >
-                        <option value="">Select year level...</option>
+                      />
+                      <datalist id="new-user-year-options">
                         {["3rd Year", "4th Year"].map((y) => (
-                          <option key={y} value={y}>
-                            {y}
-                          </option>
+                          <option key={y} value={y} />
                         ))}
-                      </select>
+                      </datalist>
                     </div>
                   </>
                 )}

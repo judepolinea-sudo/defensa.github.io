@@ -875,18 +875,18 @@ const DashboardView: React.FC<Props> = ({
                     </div>
                     <div>
                       <label htmlFor="settings-year" className="block text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">Year Level</label>
-                      <select
+                      <input
                         id="settings-year"
+                        list="settings-year-options"
+                        autoComplete="off"
+                        placeholder="3rd Year"
                         value={yearDraft}
                         onChange={(e) => setYearDraft(e.target.value)}
                         className="w-full px-6 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-all"
-                      >
-                        <option value="">Not set</option>
-                        {YEAR_LEVELS.map((y) => <option key={y} value={y}>{y}</option>)}
-                        {yearDraft && !YEAR_LEVELS.includes(yearDraft) && (
-                          <option value={yearDraft}>{yearDraft}</option>
-                        )}
-                      </select>
+                      />
+                      <datalist id="settings-year-options">
+                        {YEAR_LEVELS.map((y) => <option key={y} value={y} />)}
+                      </datalist>
                     </div>
                   </div>
                   <div className="mt-6 flex items-center gap-4">

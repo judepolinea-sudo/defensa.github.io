@@ -23,7 +23,9 @@ import {
 import { registerUser } from "../../services/authService";
 import { SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 
-const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
+// Suggested options; the field is an editable combobox so students in a
+// higher year (5th+, irregular, etc.) can type their own value.
+const YEAR_LEVELS = ["3rd Year", "4th Year"];
 
 interface Props {
   onGoToLogin: () => void;
@@ -198,8 +200,8 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
       setError("Please enter your program.");
       return;
     }
-    if (!yearLevel) {
-      setError("Please select your year level.");
+    if (!yearLevel.trim()) {
+      setError("Please enter your year level.");
       return;
     }
     if (password.length < 6) {
@@ -223,7 +225,7 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
         fullName: joinName(firstName, "", lastName),
         school,
         program: program.trim(),
-        yearLevel,
+        yearLevel: yearLevel.trim(),
       });
       setEmailSent(emailSent);
       setSubmitted(true);
@@ -442,19 +444,20 @@ const RegisterView: React.FC<Props> = ({ onGoToLogin, onBack }) => {
                 </label>
                 <div className="relative">
                   <CalendarDays className={iconClass} />
-                  <select
+                  <input
                     id="reg-year"
+                    list="reg-year-options"
+                    autoComplete="off"
+                    placeholder="3rd Year"
                     className={fieldClass("pl-10 pr-3")}
                     value={yearLevel}
                     onChange={(e) => setYearLevel(e.target.value)}
-                  >
-                    <option value="">Select</option>
+                  />
+                  <datalist id="reg-year-options">
                     {YEAR_LEVELS.map((y) => (
-                      <option key={y} value={y}>
-                        {y}
-                      </option>
+                      <option key={y} value={y} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
             </div>
