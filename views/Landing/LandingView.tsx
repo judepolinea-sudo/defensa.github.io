@@ -37,8 +37,8 @@ const NAV_LINKS = [
 
 // Exact background colours of the landing sections, so a WavySeam can paint
 // each side up to the wave and blend seamlessly into the real section bg.
-const SEAM_LIGHT = "#eff6ff"; // Tailwind blue-50  (hero, workflow, FAQ)
-const SEAM_DARK = "#020617"; // Tailwind slate-950 (benefits, CTA)
+const SEAM_LIGHT = "#eff6ff"; // Tailwind blue-50  (hero, workflow)
+const SEAM_DARK = "#020617"; // Tailwind slate-950 (benefits, FAQ, CTA)
 
 const SEAM_WAVE = `M0 60 q 120 -80 240 0 ${"t 240 0 ".repeat(4)}`;
 
@@ -398,13 +398,13 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
         </div>
       </section>
 
-      {/* FAQ Section */}
-      <section id="faq" className="relative py-32 px-6 bg-blue-50 scroll-mt-28">
-        {/* FAQ (light) → CTA (dark) — hosted here since the CTA is overflow-hidden */}
-        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK} edge="bottom" />
+      {/* FAQ Section — dark, so the page alternates light/dark section-to-section */}
+      <section id="faq" className="relative py-32 px-6 bg-slate-950 scroll-mt-28">
+        {/* workflow (light) → FAQ (dark) */}
+        <WavySeam topColor={SEAM_LIGHT} bottomColor={SEAM_DARK} />
 
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-16 text-center text-slate-900">
+          <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-16 text-center text-white">
             Frequently Asked
           </h2>
 
@@ -429,15 +429,15 @@ const LandingView: React.FC<Props> = ({ onLogin }) => {
             ].map((faq, i) => (
               <div
                 key={i}
-                className="p-8 rounded-[32px] bg-white border border-blue-100 shadow-sm group hover:bg-blue-100/50 transition-all cursor-pointer"
+                className="p-8 rounded-[32px] bg-white/5 border border-white/10 shadow-sm group hover:bg-white/10 transition-all cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-4 mb-4">
-                  <h4 className="text-xl font-black uppercase tracking-tighter text-blue-600">
+                  <h4 className="text-xl font-black uppercase tracking-tighter text-blue-400">
                     {faq.q}
                   </h4>
-                  <ChevronDown className="w-5 h-5 text-slate-400 group-hover:text-slate-900 transition-colors" />
+                  <ChevronDown className="w-5 h-5 text-slate-500 group-hover:text-white transition-colors" />
                 </div>
-                <p className="text-slate-600 font-medium leading-relaxed">
+                <p className="text-slate-400 font-medium leading-relaxed">
                   {faq.a}
                 </p>
               </div>
