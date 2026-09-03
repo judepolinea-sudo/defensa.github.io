@@ -100,7 +100,7 @@ const DashboardView: React.FC<Props> = ({
           f.clarity ?? '', f.confidenceLevel ?? '',
           (f.strengths ?? []).join('; '), (f.improvements ?? []).join('; '),
         ];
-        if (Array.isArray(thread) && thread.length > 0) {
+        if (Array.isArray(thread) && thread.length > 1) {
           thread.forEach((ex, exi) => {
             rows.push([
               ...base,
@@ -138,65 +138,206 @@ const DashboardView: React.FC<Props> = ({
   const handleExportPDF = async () => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-    const M = 48;
+
+    const M = 50;                                   // page margin
     const pageW = doc.internal.pageSize.getWidth();
     const pageH = doc.internal.pageSize.getHeight();
+    const CW = pageW - M * 2;                        // content width
+    const INK = [30, 41, 59] as const;              // slate-800
+    const MUTE = [100, 116, 139] as const;          // slate-500
+    const LINE = [203, 213, 225] as const;          // slate-300
+    const ACCENT = [37, 99, 235] as const;          // blue-600
     let y = M;
-    const write = (text: string, size = 10, bold = false) => {
+
+    const room = (h: number) => { if (y + h > pageH - M) { doc.addPage(); y = M; } };
+    const gap = (h: number) => { y += h; };
+
+    const para = (
+      text: string,
+      opts: { size?: number; bold?: boolean; color?: readonly number[]; indent?: number; lh?: number } = {},
+    ) => {
+      const { size = 10, bold = false, color = INK, indent = 0, lh = 1.5 } = opts;
       doc.setFont('helvetica', bold ? 'bold' : 'normal');
       doc.setFontSize(size);
-      for (const part of doc.splitTextToSize(text, pageW - M * 2)) {
-        if (y > pageH - M) { doc.addPage(); y = M; }
-        doc.text(part, M, y);
-        y += size * 1.45;
+      doc.setTextColor(color[0], color[1], color[2]);
+      for (const part of doc.splitTextToSize(text, CW - indent)) {
+        room(size * lh);
+        doc.text(part, M + indent, y);
+        y += size * lh;
       }
     };
-    write('Defensa - Practice Data Export', 16, true);
-    write(new Date().toLocaleString(), 9);
-    y += 10;
-    write('Profile', 12, true);
-    write(`Name: ${user?.fullName ?? '-'}`);
-    write(`Email: ${user?.email ?? '-'}`);
-    write(`Program: ${user?.program ?? '-'}    Year Level: ${user?.yearLevel ?? '-'}`);
+
+    const rule = (color: readonly number[] = LINE, w = 0.75) => {
+      room(8);
+      doc.setDrawColor(color[0], color[1], color[2]);
+      doc.setLineWidth(w);
+      doc.line(M, y, M + CW, y);
+      gap(8);
+    };
+
+    const sectionTitle = (label: string) => {
+      gap(14);
+      room(30);
+      para(label.toUpperCase(), { size: 12, bold: true, color: ACCENT });
+      gap(2);
+      rule(ACCENT, 1);
+      gap(4);
+    };
+
+    const kv = (label: string, value: string) => {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
+      room(15);
+      doc.text(label, M, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(INK[0], INK[1], INK[2]);
+      const lines = doc.splitTextToSize(value || '-', CW - 120);
+      doc.text(lines[0], M + 120, y);
+      y += 15;
+      for (const extra of lines.slice(1)) { room(13); doc.text(extra, M + 120, y); y += 13; }
+    };
+
+    // Simple fixed-column table with header band, zebra rows and wrapping cells.
+    const table = (headers: string[], rows: string[][], widths: number[]) => {
+      const scale = CW / widths.reduce((a, b) => a + b, 0);
+      const col = widths.map((w) => w * scale);
+      const x0 = M;
+      const pad = 5;
+      const drawRow = (cells: string[], bold: boolean, fill?: readonly number[]) => {
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(8.5);
+        const wrapped = cells.map((c, i) => doc.splitTextToSize(String(c ?? ''), col[i] - pad * 2));
+        const rowH = Math.max(...wrapped.map((w) => w.length)) * 11 + 8;
+        room(rowH);
+        if (fill) { doc.setFillColor(fill[0], fill[1], fill[2]); doc.rect(x0, y - 9, CW, rowH, 'F'); }
+        doc.setTextColor(bold ? 255 : INK[0], bold ? 255 : INK[1], bold ? 255 : INK[2]);
+        let cx = x0;
+        wrapped.forEach((w, i) => {
+          w.forEach((ln: string, li: number) => doc.text(ln, cx + pad, y + li * 11));
+          cx += col[i];
+        });
+        y += rowH;
+        doc.setDrawColor(LINE[0], LINE[1], LINE[2]);
+        doc.setLineWidth(0.5);
+        doc.line(x0, y - 4, x0 + CW, y - 4);
+      };
+      drawRow(headers, true, ACCENT);
+      rows.forEach((r, i) => drawRow(r, false, i % 2 ? [241, 245, 249] : undefined));
+      gap(6);
+    };
+
+    const sessions = sessionHistory ?? [];
+    const scored = sessions.filter((s) => (s.history?.length ?? 0) > 0);
+    const avg = (nums: number[]) =>
+      nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : 0;
+
+    // ── Header ──────────────────────────────────────────────────────
+    para('DEFENSA', { size: 20, bold: true, color: ACCENT });
+    para('Defense Readiness Report', { size: 13, bold: true });
+    para(`Generated ${new Date().toLocaleString()}`, { size: 9, color: MUTE });
+
+    // ── Student profile ─────────────────────────────────────────────
+    sectionTitle('Student Profile');
+    kv('Name', user?.fullName ?? '-');
+    kv('Email', user?.email ?? '-');
+    kv('Program', `${user?.program ?? '-'}${user?.yearLevel ? `  (${user.yearLevel})` : ''}`);
     if (project) {
-      y += 6;
-      write('Project', 12, true);
-      write(`Title: ${project.title}`);
-      write(`Methodology: ${project.methodology ?? '-'}`);
+      kv('Project Title', project.title);
+      kv('Methodology', project.methodology ?? '-');
     }
-    y += 10;
-    write(`Practice Sessions (${sessionHistory?.length ?? 0})`, 12, true);
-    (sessionHistory ?? []).forEach((s, si) => {
-      y += 8;
-      write(
-        `${si + 1}. ${s.date ? new Date(s.date).toLocaleString() : ''}   Overall ${s.overallScore ?? '-'} / 100   ${s.questionsAnswered ?? (s.history?.length ?? 0)} questions`,
-        10, true,
+
+    // ── Summary ─────────────────────────────────────────────────────
+    sectionTitle('Performance Summary');
+    kv('Sessions completed', String(sessions.length));
+    kv('Answered sessions', String(scored.length));
+    kv('Average overall score', `${avg(scored.map((s) => s.overallScore ?? 0))} / 100`);
+    const catAgg: Record<string, number[]> = {};
+    scored.forEach((s) =>
+      Object.entries(s.categoryScores ?? {}).forEach(([k, v]) => {
+        (catAgg[k] ??= []).push(Number(v) || 0);
+      }),
+    );
+    const catMeans = Object.entries(catAgg).map(([k, v]) => [k, avg(v)] as const).sort((a, b) => b[1] - a[1]);
+    if (catMeans.length) {
+      kv('Strongest area', `${catMeans[0][0]} (${catMeans[0][1]}%)`);
+      kv('Focus area', `${catMeans[catMeans.length - 1][0]} (${catMeans[catMeans.length - 1][1]}%)`);
+    }
+
+    // ── Sessions overview table ─────────────────────────────────────
+    sectionTitle('Practice Sessions Overview');
+    table(
+      ['#', 'Date & Time', 'Score', 'Q&A', 'Weakest Area'],
+      sessions.map((s, i) => [
+        String(i + 1),
+        s.date ? new Date(s.date).toLocaleString() : '-',
+        `${s.overallScore ?? 0} / 100`,
+        `${s.questionsAnswered ?? s.history?.length ?? 0} / ${s.history?.length ?? 0}`,
+        s.weakestCategory ?? '-',
+      ]),
+      [22, 150, 55, 45, 90],
+    );
+
+    // ── Detailed analysis ──────────────────────────────────────────
+    sectionTitle('Detailed Question Analysis');
+    sessions.forEach((s, si) => {
+      gap(10);
+      room(24);
+      para(
+        `Session ${si + 1}  ·  ${s.date ? new Date(s.date).toLocaleString() : '-'}  ·  Overall ${s.overallScore ?? 0}/100`,
+        { size: 10.5, bold: true },
       );
-      (s.history ?? []).forEach((qa, qi) => {
+      gap(2);
+      rule();
+      if (!s.history?.length) { para('No questions were answered in this session.', { size: 9, color: MUTE }); return; }
+
+      s.history.forEach((qa, qi) => {
         const f = (qa.feedback ?? {}) as any;
         const thread = (qa as any).threadExchanges as any[] | undefined;
-        write(`Q${qi + 1} [${qa.category ?? ''}] ${qa.question ?? ''}`, 9);
+        gap(6);
+        para(`Q${qi + 1}  ·  ${qa.category ?? 'General'}${qa.panelistName ? `  ·  asked by ${qa.panelistName}` : ''}`,
+          { size: 9, bold: true, color: MUTE });
+        para(qa.question ?? '-', { size: 10 });
+        gap(2);
+
         if (Array.isArray(thread) && thread.length > 1) {
           thread.forEach((ex, exi) => {
-            write(
-              `  ${ex.isFollowUp ? `Follow-up ${exi}` : 'Root'}: ${ex.question ?? ''}`,
-              8,
+            para(
+              `${ex.isFollowUp ? `Follow-up ${exi}` : 'Root question'}${typeof ex.satisfactionScore === 'number' ? `  —  ${Math.round(ex.satisfactionScore)}% satisfied` : ''}`,
+              { size: 8.5, bold: true, color: MUTE, indent: 12 },
             );
-            write(`    Answer: ${ex.answer || '(no answer)'}`, 8);
-            if (typeof ex.satisfactionScore === 'number') {
-              write(`    ${Math.round(ex.satisfactionScore)}% satisfied`, 8);
-            }
+            para(ex.question ?? '', { size: 9, indent: 12, color: MUTE });
+            para(`Answer: ${ex.answer || '(no answer)'}`, { size: 9, indent: 12 });
+            if (ex.panelistRemark) para(`Panel: ${ex.panelistRemark}`, { size: 8.5, indent: 12, color: MUTE });
+            gap(3);
           });
         } else {
-          write(`Answer: ${qa.answer ?? '(no answer)'}`, 9);
+          para(`Answer: ${qa.answer || '(no answer)'}`, { size: 9.5, indent: 12 });
         }
-        write(
-          `Final score ${f.score ?? '-'}  |  Accuracy ${f.semanticRelevance ?? '-'}  |  Completeness ${f.keywordAccuracy ?? '-'}  |  Clarity ${f.clarity ?? '-'}  |  Confidence ${f.confidenceLevel ?? '-'}`,
-          8,
+
+        para(
+          `Final ${f.score ?? '-'}/100    Accuracy ${f.semanticRelevance ?? '-'}    Completeness ${f.keywordAccuracy ?? '-'}    Clarity ${f.clarity ?? '-'}    Confidence ${f.confidenceLevel ?? '-'}`,
+          { size: 8.5, bold: true, indent: 12 },
         );
+        if ((f.strengths ?? []).length) para(`Strengths: ${f.strengths.join('; ')}`, { size: 8.5, indent: 12, color: MUTE });
+        if ((f.improvements ?? []).length) para(`Improvements: ${f.improvements.join('; ')}`, { size: 8.5, indent: 12, color: MUTE });
+        gap(4);
+        rule([226, 232, 240], 0.4);
       });
     });
-    doc.save(`defensa-data-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+    // ── Footer page numbers ────────────────────────────────────────
+    const total = doc.getNumberOfPages();
+    for (let p = 1; p <= total; p++) {
+      doc.setPage(p);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(MUTE[0], MUTE[1], MUTE[2]);
+      doc.text('Defensa — Defense Readiness Report', M, pageH - 24);
+      doc.text(`Page ${p} of ${total}`, pageW - M, pageH - 24, { align: 'right' });
+    }
+
+    doc.save(`defensa-readiness-report-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const handleConfirmRemove = async () => {
