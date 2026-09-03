@@ -1788,7 +1788,10 @@ function documentGrounding(answer: string, sourceText: string): number {
 // A firm, varying follow-up that simply restates the question the student
 // dodged — more useful (and less repetitive) than a generic "go deeper".
 function restateFollowup(rootQuestion: string, attempt = 0): string {
-  const q = rootQuestion.replace(/\s+/g, " ").trim().slice(0, 220);
+  // Show the WHOLE question — a restated follow-up that stops mid-word
+  // ("...this manual entry model introd") reads as broken. Only guard against a
+  // pathologically long string.
+  const q = rootQuestion.replace(/\s+/g, " ").trim().slice(0, 700);
   const lead = [
     "That doesn't answer the question. Let me put it plainly:",
     "You still haven't addressed it. Once more:",
@@ -1908,7 +1911,7 @@ export const evaluateSatisfaction = async (
     : '(No prior exchanges — this is the first answer.)';
 
   const evasiveInstruction = consecutiveEvasiveCount >= 2
-    ? `IMPORTANT: The student has been evasive ${consecutiveEvasiveCount} times in a row. If their latest answer is also evasive or off-topic, set verdict to "evasive" and generate a follow-up that firmly but politely rephrases the root question: "That's not quite what I asked. Let me rephrase: ${rootQuestion.substring(0, 200)}"`
+    ? `IMPORTANT: The student has been evasive ${consecutiveEvasiveCount} times in a row. If their latest answer is also evasive or off-topic, set verdict to "evasive" and set followup_question to a firm but polite restatement of the ROOT QUESTION IN FULL (do not truncate it), e.g. prefixed with "That's not quite what I asked. Let me rephrase: ".`
     : '';
 
   const forceCloseInstruction = forceClose
@@ -1918,7 +1921,7 @@ export const evaluateSatisfaction = async (
   const prompt = `You are ${panelist.name}, a thesis defense panelist with this persona: "${panelist.persona}"
 
 ROOT QUESTION ASKED:
-"${rootQuestion.substring(0, 400)}"
+"${rootQuestion.substring(0, 700)}"
 
 FULL CONVERSATION THREAD SO FAR:
 ${threadBlock}
