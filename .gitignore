@@ -39,3 +39,7 @@ migrated_prompt_history/
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.pyc
