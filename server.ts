@@ -1152,6 +1152,131 @@ export async function createApp() {
     }
   });
 
+  // GET /api/admin/metrics — real infrastructure + platform numbers for the
+  // System Health dashboard (replaces the previously hard-coded values).
+  app.get("/api/admin/metrics", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Admin access required." });
+      }
+
+      const mem = process.memoryUsage();
+      const onlineCutoff = new Date(Date.now() - 3 * 60_000).toISOString();
+
+      // Timed DB round-trip = a real latency + liveness signal.
+      const dbStart = Date.now();
+      const usersHead = await supabase
+        .from("users")
+        .select("id", { count: "exact", head: true })
+        .eq("is_deleted", false);
+      const dbLatencyMs = Date.now() - dbStart;
+      const dbOk = !usersHead.error;
+
+      const [students, admins, sessionsHead, projectsHead, onlineHead, feedbackHead] =
+        await Promise.all([
+          supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "STUDENT").eq("is_deleted", false),
+          supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "ADMIN").eq("is_deleted", false),
+          supabase.from("defense_sessions").select("id", { count: "exact", head: true }),
+          supabase.from("projects").select("id", { count: "exact", head: true }),
+          supabase.from("users").select("id", { count: "exact", head: true }).eq("is_deleted", false).gte("last_seen_at", onlineCutoff),
+          supabase.from("session_feedback").select("id", { count: "exact", head: true }),
+        ]);
+
+      let emailConfigured = false;
+      try {
+        const { isEmailConfigured } = await import("./lib/email.ts");
+        emailConfigured = isEmailConfigured();
+      } catch { /* ignore */ }
+
+      const ownAiReachable = await (async () => {
+        try {
+          const c = new AbortController();
+          setTimeout(() => c.abort(), 2_500);
+          const r = await fetch(`${process.env.OWN_AI_URL ?? "http://127.0.0.1:8080"}/health`, { signal: c.signal });
+          return r.ok;
+        } catch { return false; }
+      })();
+
+      res.json({
+        serverTime: new Date().toISOString(),
+        uptimeSeconds: Math.round(process.uptime()),
+        node: process.version,
+        env: process.env.NODE_ENV ?? "development",
+        memory: {
+          rssMb: +(mem.rss / 1048576).toFixed(1),
+          heapUsedMb: +(mem.heapUsed / 1048576).toFixed(1),
+          heapTotalMb: +(mem.heapTotal / 1048576).toFixed(1),
+        },
+        db: { ok: dbOk, latencyMs: dbLatencyMs, error: usersHead.error?.message ?? null },
+        counts: {
+          users: usersHead.count ?? 0,
+          students: students.count ?? 0,
+          admins: admins.count ?? 0,
+          sessions: sessionsHead.count ?? 0,
+          projects: projectsHead.count ?? 0,
+          onlineNow: onlineHead.count ?? 0,
+          feedback: feedbackHead.count ?? 0,
+        },
+        ai: {
+          cloudReady: !!(process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY),
+          groq: !!process.env.GROQ_API_KEY,
+          gemini: !!process.env.GEMINI_API_KEY,
+          openrouter: !!process.env.OPENROUTER_API_KEY,
+          trainedModel: ownAiReachable,
+        },
+        email: { configured: emailConfigured },
+      });
+    } catch (error: any) {
+      console.error("admin/metrics error:", error);
+      res.status(500).json({ message: error.message || "Failed to load metrics." });
+    }
+  });
+
+  // POST /api/admin/broadcast — email every active student. Subject + body.
+  app.post("/api/admin/broadcast", async (req, res) => {
+    try {
+      const caller = await verifyAndGetCaller(req.headers.authorization);
+      if (!caller) return res.status(401).json({ message: "Unauthorized" });
+      if (caller.profile.role !== "ADMIN") {
+        return res.status(403).json({ message: "Admin access required." });
+      }
+      const subject = String(req.body?.subject ?? "").trim().slice(0, 160);
+      const message = String(req.body?.message ?? "").trim().slice(0, 4000);
+      if (!subject || !message) {
+        return res.status(400).json({ message: "Subject and message are both required." });
+      }
+
+      const { data: recips, error } = await supabase
+        .from("users")
+        .select("email, full_name")
+        .eq("role", "STUDENT")
+        .eq("is_deleted", false);
+      if (error) throw new Error(error.message);
+
+      const list = (recips ?? []).filter((r) => r.email);
+      if (list.length === 0) return res.json({ sent: 0, failed: 0, total: 0 });
+
+      const { sendBroadcastEmail } = await import("./lib/email.ts");
+      let sent = 0;
+      let failed = 0;
+      for (const r of list) {
+        try {
+          const ok = await sendBroadcastEmail({ to: r.email!, subject, message });
+          ok ? sent++ : failed++;
+        } catch {
+          failed++;
+        }
+      }
+      await logAudit(caller.decoded.uid, "ADMIN_BROADCAST", "users", "all-students", { subject, sent, failed });
+      res.json({ sent, failed, total: list.length });
+    } catch (error: any) {
+      console.error("admin/broadcast error:", error);
+      res.status(500).json({ message: error.message || "Broadcast failed." });
+    }
+  });
+
   // ===============================================================
   // USER MANAGEMENT (Admin + Coordinator)
   // ===============================================================

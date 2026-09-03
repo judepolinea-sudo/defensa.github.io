@@ -34,6 +34,7 @@ import {
   BookOpen,
   Trash2,
   AlertTriangle,
+  Download,
 } from "lucide-react";
 import { User, UserRole, USER_ROLE_LABELS, SCHOOLS, DEFAULT_SCHOOL, joinName } from "../../types";
 import {
@@ -263,7 +264,14 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error();
-      setProjects(await res.json());
+      const data = await res.json();
+      // Newest upload first.
+      (Array.isArray(data) ? data : []).sort(
+        (a: any, b: any) =>
+          new Date(b.abstractUploadedAt || b.createdAt || 0).getTime() -
+          new Date(a.abstractUploadedAt || a.createdAt || 0).getTime(),
+      );
+      setProjects(data);
     } catch {
       toast.error("Failed to load projects.");
     } finally {
@@ -273,6 +281,28 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
 
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [onlineLoading, setOnlineLoading] = useState(false);
+
+  const [metrics, setMetrics] = useState<any | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const [broadcast, setBroadcast] = useState({ subject: "", message: "" });
+  const [broadcastSending, setBroadcastSending] = useState(false);
+
+  const fetchMetrics = useCallback(async () => {
+    if (!token) return;
+    setMetricsLoading(true);
+    try {
+      const res = await fetch("/api/admin/metrics", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      setMetrics(await res.json());
+    } catch {
+      /* leave last-known metrics in place */
+    } finally {
+      setMetricsLoading(false);
+    }
+  }, [token]);
 
   const fetchOnlineUsers = useCallback(async () => {
     if (!token) return;
@@ -295,9 +325,11 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
   useEffect(() => {
     if (activeTab !== "health") return;
     fetchOnlineUsers();
+    fetchMetrics();
     const id = setInterval(fetchOnlineUsers, 30_000);
-    return () => clearInterval(id);
-  }, [activeTab, fetchOnlineUsers]);
+    const m = setInterval(fetchMetrics, 60_000);
+    return () => { clearInterval(id); clearInterval(m); };
+  }, [activeTab, fetchOnlineUsers, fetchMetrics]);
 
   useEffect(() => {
     if (activeTab === "users") fetchUsers();
@@ -531,6 +563,97 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
     }, 1200);
   };
 
+  // Re-pull live metrics + presence (the System Health refresh button).
+  const handleRefreshMetrics = useCallback(async () => {
+    setIsRefreshing(true);
+    await Promise.all([fetchMetrics(), fetchOnlineUsers()]);
+    setIsRefreshing(false);
+    toast.success("Metrics refreshed.");
+  }, [fetchMetrics, fetchOnlineUsers]);
+
+  // Download a JSON snapshot of the current admin data set.
+  const handleSnapshot = useCallback(async () => {
+    setActionLoading("snapshot");
+    try {
+      const h = { headers: { Authorization: `Bearer ${token}` } };
+      const [m, u, s, p] = await Promise.all([
+        fetch("/api/admin/metrics", h).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch("/api/admin/users", h).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+        fetch("/api/admin/sessions", h).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+        fetch("/api/projects/my", h).then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      ]);
+      if (m) setMetrics(m);
+      const snapshot = {
+        generatedAt: new Date().toISOString(),
+        generatedBy: user?.email ?? null,
+        metrics: m,
+        users: u,
+        sessions: s,
+        projects: p,
+      };
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `defensa-snapshot-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Snapshot downloaded.");
+    } catch {
+      toast.error("Snapshot failed.");
+    } finally {
+      setActionLoading(null);
+    }
+  }, [token, user?.email]);
+
+  // Re-check the AI + email integrations and report their state.
+  const handleRecheck = useCallback(async () => {
+    setActionLoading("recheck");
+    try {
+      const [ai, email] = await Promise.all([
+        fetch("/api/ai/status").then((r) => r.json()).catch(() => null),
+        fetch("/api/email/status").then((r) => r.json()).catch(() => null),
+      ]);
+      await fetchMetrics();
+      const aiTxt = ai
+        ? ai.engine === "trained"
+          ? "AI: trained model online"
+          : ai.engine === "cloud"
+            ? "AI: cloud engine online"
+            : "AI: no provider reachable"
+        : "AI: unknown";
+      const emailTxt = email?.ok ? "Email: connected" : "Email: not configured";
+      (email?.ok && ai?.online ? toast.success : toast.error)(`${aiTxt} · ${emailTxt}`);
+    } catch {
+      toast.error("Integration check failed.");
+    } finally {
+      setActionLoading(null);
+    }
+  }, [fetchMetrics]);
+
+  const handleBroadcast = useCallback(async () => {
+    if (!broadcast.subject.trim() || !broadcast.message.trim()) return;
+    setBroadcastSending(true);
+    try {
+      const res = await fetch("/api/admin/broadcast", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(broadcast),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Broadcast failed.");
+      toast.success(`Sent to ${data.sent} student(s)${data.failed ? `, ${data.failed} failed` : ""}.`);
+      setBroadcastOpen(false);
+      setBroadcast({ subject: "", message: "" });
+    } catch (e: any) {
+      toast.error(e.message || "Broadcast failed.");
+    } finally {
+      setBroadcastSending(false);
+    }
+  }, [broadcast, token]);
+
   const activeUsers = users.filter((u) => u.status !== "PENDING");
   const visibleUsers = (() => {
     const q = userSearch.trim().toLowerCase();
@@ -576,8 +699,6 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
       label: "Global Config",
     },
   ];
-
-  const serverLoadCounter = useAnimatedCounter(12);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col md:flex-row">
@@ -749,91 +870,108 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                 <div className="flex gap-4">
                   <motion.button
                     type="button"
-                    onClick={() => triggerAction("Cache Clear")}
+                    onClick={handleRefreshMetrics}
                     title="Refresh system metrics"
                     aria-label="Refresh system metrics"
                     className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-slate-600 dark:text-slate-400"
                     whileHover={{ scale: 1.05, backgroundColor: "#f8fafc" }}
                     whileTap={{ scale: 0.95 }}
-                    animate={isRefreshing ? { rotate: 360 } : { rotate: 0 }}
+                    animate={(isRefreshing || metricsLoading) ? { rotate: 360 } : { rotate: 0 }}
                     transition={
-                      isRefreshing
+                      (isRefreshing || metricsLoading)
                         ? { repeat: Infinity, duration: 0.8, ease: "linear" }
                         : {}
                     }
                   >
                     <RefreshCcw className="w-5 h-5" />
                   </motion.button>
-                  <div className="px-5 py-3 bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 rounded-2xl font-black text-[10px] tracking-widest uppercase flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />{" "}
-                    PLATFORM: OPTIMAL
-                  </div>
+                  {(() => {
+                    const healthy = metrics?.db?.ok && metrics?.ai?.cloudReady;
+                    const state = !metrics ? "CHECKING" : healthy ? "HEALTHY" : "DEGRADED";
+                    const tone = !metrics
+                      ? "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                      : healthy
+                        ? "bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300"
+                        : "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300";
+                    return (
+                      <div className={`px-5 py-3 rounded-2xl font-black text-[10px] tracking-widest uppercase flex items-center gap-2 ${tone}`}>
+                        <div className={`w-2 h-2 rounded-full animate-pulse ${healthy ? "bg-green-500" : metrics ? "bg-amber-500" : "bg-slate-400"}`} />
+                        DEFENSA &middot; {state}
+                      </div>
+                    );
+                  })()}
                 </div>
               </motion.header>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-                {[
+              {(() => {
+                const up = metrics?.uptimeSeconds ?? 0;
+                const upStr = up >= 3600
+                  ? `${Math.floor(up / 3600)}h ${Math.floor((up % 3600) / 60)}m`
+                  : `${Math.floor(up / 60)}m ${up % 60}s`;
+                const heap = metrics?.memory?.heapUsedMb ?? 0;
+                const heapTotal = metrics?.memory?.heapTotalMb || 1;
+                const heapPct = Math.min(100, Math.round((heap / heapTotal) * 100));
+                const cards = [
                   {
-                    label: "Server Load",
-                    value: `${serverLoadCounter}.4%`,
-                    icon: <HardDrive className="w-16 h-16" />,
+                    label: "Server Memory",
+                    value: metrics ? `${heap} MB` : "—",
                     bar: true,
-                    barWidth: 12.4,
+                    barWidth: heapPct,
+                    sub: metrics ? `${heapPct}% of heap · up ${upStr}` : "loading…",
                   },
                   {
-                    label: "API Latency",
-                    value: "342ms",
-                    icon: <Cpu className="w-16 h-16" />,
-                    sub: "Normal Range",
+                    label: "DB Latency",
+                    value: metrics ? `${metrics.db?.latencyMs ?? "—"} ms` : "—",
+                    sub: metrics
+                      ? metrics.db?.latencyMs < 400 ? "Normal range" : "Elevated"
+                      : "loading…",
+                    warn: metrics && metrics.db?.latencyMs >= 400,
                   },
                   {
-                    label: "DB Status",
-                    value: "Synced",
-                    icon: <Database className="w-16 h-16" />,
-                    sub: "99.9% Uptime",
+                    label: "Database",
+                    value: metrics ? (metrics.db?.ok ? "Connected" : "Error") : "—",
+                    sub: metrics
+                      ? `${metrics.counts?.users ?? 0} users · ${metrics.counts?.sessions ?? 0} sessions`
+                      : "loading…",
+                    warn: metrics && !metrics.db?.ok,
                   },
-                ].map((card, i) => (
-                  <motion.div
-                    key={card.label}
-                    variants={itemVariants}
-                    className="p-8 bg-white dark:bg-slate-900 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm relative group overflow-hidden cursor-default"
-                    whileHover={{
-                      y: -4,
-                      boxShadow: "0 20px 40px rgba(0,0,0,0.08)",
-                    }}
-                    transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                  >
-                    <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                      {card.icon}
-                    </div>
-                    <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-6">
-                      {card.label}
-                    </p>
-                    <p className="text-4xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-none">
-                      {card.value}
-                    </p>
-                    {card.bar && (
-                      <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-blue-500 shadow-lg shadow-blue-500/40"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${card.barWidth}%` }}
-                          transition={{
-                            duration: 1,
-                            ease: [0.25, 0.46, 0.45, 0.94],
-                            delay: 0.3 + i * 0.1,
-                          }}
-                        />
-                      </div>
-                    )}
-                    {card.sub && (
-                      <p className="text-[10px] text-green-600 font-black uppercase tracking-widest">
-                        {card.sub}
-                      </p>
-                    )}
-                  </motion.div>
-                ))}
-              </div>
+                ];
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+                    {cards.map((card, i) => (
+                      <motion.div
+                        key={card.label}
+                        variants={itemVariants}
+                        className="p-8 bg-white dark:bg-slate-900 rounded-[40px] border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden cursor-default"
+                        whileHover={{ y: -4, boxShadow: "0 20px 40px rgba(0,0,0,0.08)" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                      >
+                        <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-6">
+                          {card.label}
+                        </p>
+                        <p className="text-4xl font-black text-slate-800 dark:text-slate-100 mb-2 leading-none">
+                          {card.value}
+                        </p>
+                        {card.bar && (
+                          <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-2">
+                            <motion.div
+                              className="h-full bg-blue-500 shadow-lg shadow-blue-500/40"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${card.barWidth}%` }}
+                              transition={{ duration: 1, ease: [0.25, 0.46, 0.45, 0.94], delay: 0.3 + i * 0.1 }}
+                            />
+                          </div>
+                        )}
+                        {card.sub && (
+                          <p className={`text-[10px] font-black uppercase tracking-widest ${card.warn ? "text-amber-600" : "text-green-600"}`}>
+                            {card.sub}
+                          </p>
+                        )}
+                      </motion.div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <motion.div
                 variants={itemVariants}
@@ -1011,38 +1149,35 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                       Admin Operations
                     </h3>
                     <div className="space-y-4">
-                      {["Run Snapshot", "Cycle API Keys"].map((action) => (
+                      {[
+                        { label: "Download Snapshot", key: "snapshot", icon: <Download className="w-4 h-4" />, onClick: handleSnapshot,
+                          hint: "Export users, sessions, projects & metrics as JSON" },
+                        { label: "Recheck Integrations", key: "recheck", icon: <RefreshCcw className="w-4 h-4" />, onClick: handleRecheck,
+                          hint: "Re-test the AI and email connections" },
+                        { label: "Email All Students", key: "broadcast", icon: <Bell className="w-4 h-4" />, onClick: () => setBroadcastOpen(true),
+                          hint: "Send an announcement to every active student" },
+                      ].map((op) => (
                         <motion.button
                           type="button"
-                          key={action}
-                          onClick={() => triggerAction(action)}
-                          className="w-full py-4 bg-white/5 border border-white/5 rounded-2xl text-sm font-black uppercase tracking-tighter text-left px-6 flex justify-between items-center"
-                          whileHover={{
-                            backgroundColor: "rgba(255,255,255,0.1)",
-                            x: 4,
-                          }}
+                          key={op.key}
+                          onClick={op.onClick}
+                          disabled={actionLoading === op.key}
+                          title={op.hint}
+                          className="w-full py-4 bg-white/5 border border-white/5 rounded-2xl text-sm font-black uppercase tracking-tighter text-left px-6 flex justify-between items-center disabled:opacity-50"
+                          whileHover={{ backgroundColor: "rgba(255,255,255,0.1)", x: 4 }}
                           whileTap={{ scale: 0.98 }}
                         >
-                          {action} <ChevronRight className="w-4 h-4" />
+                          {op.label}
+                          {actionLoading === op.key
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : op.icon}
                         </motion.button>
                       ))}
-                      <motion.button
-                        type="button"
-                        onClick={() => triggerAction("Broadcast Message")}
-                        className="w-full py-4 bg-white/5 border border-white/5 rounded-2xl text-sm font-black uppercase tracking-tighter text-left px-6 flex justify-between items-center"
-                        whileHover={{
-                          backgroundColor: "rgba(255,255,255,0.1)",
-                          x: 4,
-                        }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        Push Notification <Bell className="w-4 h-4" />
-                      </motion.button>
                     </div>
                   </div>
                   <div className="pt-10 flex items-center gap-4 text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest border-t border-white/5">
-                    <ShieldAlert className="w-4 h-4 text-red-500" /> Authorized
-                    System Entry
+                    <ShieldAlert className="w-4 h-4 text-red-500" />
+                    {user?.email ? `Signed in as ${user.email}` : "Authorized System Entry"}
                   </div>
                 </motion.div>
               </div>
@@ -2140,6 +2275,69 @@ const AdminDashboardView: React.FC<Props> = ({ user, token, onLogout }) => {
                   )}
                   Activate Account
                 </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── EMAIL ALL STUDENTS ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {broadcastOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => !broadcastSending && setBroadcastOpen(false)}
+          >
+            <motion.div
+              className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 shadow-2xl"
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-black uppercase tracking-tight text-slate-800 dark:text-slate-100">Email All Students</h3>
+                <button type="button" onClick={() => !broadcastSending && setBroadcastOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+                Sends a plain announcement email to every active student account. Use sparingly.
+              </p>
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Subject</label>
+              <input
+                value={broadcast.subject}
+                onChange={(e) => setBroadcast((b) => ({ ...b, subject: e.target.value }))}
+                maxLength={160}
+                placeholder="e.g. Mock defense schedule — this Friday"
+                className="w-full mb-4 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium"
+              />
+              <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Message</label>
+              <textarea
+                value={broadcast.message}
+                onChange={(e) => setBroadcast((b) => ({ ...b, message: e.target.value }))}
+                maxLength={4000}
+                rows={6}
+                placeholder="Write your announcement…"
+                className="w-full mb-6 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-sm font-medium resize-none"
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleBroadcast}
+                  disabled={broadcastSending || !broadcast.subject.trim() || !broadcast.message.trim()}
+                  className="flex-1 py-3.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-black rounded-2xl uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                >
+                  {broadcastSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4" />}
+                  {broadcastSending ? "Sending…" : "Send to all students"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBroadcastOpen(false)}
+                  disabled={broadcastSending}
+                  className="px-6 py-3.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-black rounded-2xl uppercase tracking-widest text-xs"
+                >
+                  Cancel
+                </button>
               </div>
             </motion.div>
           </motion.div>

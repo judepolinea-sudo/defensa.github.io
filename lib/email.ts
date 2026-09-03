@@ -221,6 +221,32 @@ export async function sendPasswordResetEmail(opts: {
   });
 }
 
+// Plain announcement email (no CTA button) — used by the admin broadcast.
+export async function sendBroadcastEmail(opts: {
+  to: string;
+  subject: string;
+  message: string;
+}): Promise<boolean> {
+  if (!opts.to || !opts.subject || !opts.message) return false;
+  const safe = opts.message.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
+  const html = `<!doctype html><html><body style="margin:0;padding:0;background:#f1f5f9;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,0.08);font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;">
+        <tr><td style="background:${BRAND};padding:24px 32px;color:#fff;font-size:18px;font-weight:800;letter-spacing:0.5px;">DEFENSA</td></tr>
+        <tr><td style="padding:32px;">
+          <h1 style="margin:0 0 14px;font-size:20px;color:#0f172a;">${opts.subject.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string))}</h1>
+          <div style="font-size:15px;line-height:1.65;color:#334155;white-space:pre-wrap;">${safe}</div>
+        </td></tr>
+        <tr><td style="padding:18px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;">
+          Sent by your Defensa administrator &mdash; AI Viva Simulator &amp; Readiness Platform
+        </td></tr>
+      </table>
+    </td></tr>
+  </table></body></html>`;
+  return sendEmail({ to: opts.to, subject: opts.subject, html });
+}
+
 export async function sendGoogleWelcomeEmail(opts: {
   to: string;
   fullName: string;
